@@ -263,9 +263,17 @@ def test_transcribe_ignora_nao_midia(cli, tmp_path):
     assert "ignorado" in r.output or "nenhum arquivo" in r.output
 
 
-def test_transcribe_avisa_modelo_ausente(cli, audio_file):
+def test_transcribe_baixa_modelo_ausente_antes_de_transcrever(cli, audio_file, sem_download):
+    """O modelo ausente é anunciado e baixado antes de transcrever.
+
+    Regressão: antes, o faster-whisper baixava sozinho, dentro do carregamento
+    do motor, sem aviso nem barra — até 3 GB de silêncio.
+    """
     r = roda(cli, "transcribe", str(audio_file))
-    assert "será baixado agora" in r.output
+    assert r.exit_code == 0
+    assert "baixando o modelo" in r.output
+    assert "modelo pronto" in r.output
+    assert sem_download.chamadas == ["large-v3"]
 
 
 # --------------------------------------------------------------------------

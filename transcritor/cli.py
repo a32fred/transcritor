@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import mimetypes
 import os
 import shutil
+import subprocess
 import sys
 import time
+import urllib.request
+import webbrowser
 from pathlib import Path
 
 import click
 
 from . import __version__
-from .config import KNOWN_MODELS, Config
+from .config import AUDIO_EXTENSIONS, KNOWN_MODELS, Config
 from .engine import Engine, download_model, model_status
 from .formats import ts_human
 from .jobs import JobStore
@@ -28,6 +33,13 @@ LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 def setup_logging(verbose: bool, quiet: bool = False) -> None:
     level = logging.DEBUG if verbose else (logging.WARNING if quiet else logging.INFO)
     logging.basicConfig(level=level, format=LOG_FORMAT, datefmt="%H:%M:%S")
+    if not verbose:
+        # Bibliotecas de terceiros falam muito e em jargão em inglês
+        # ("HTTP Request: HEAD https://huggingface.co/…"). Em uso normal só
+        # interessa o que o transcritor tem a dizer.
+        for ruidoso in ("httpx", "httpcore", "urllib3", "huggingface_hub",
+                        "filelock", "faster_whisper", "ctranslate2"):
+            logging.getLogger(ruidoso).setLevel(logging.WARNING)
 
 
 def load_cfg(ctx: click.Context) -> Config:
@@ -36,11 +48,21 @@ def load_cfg(ctx: click.Context) -> Config:
     return cfg
 
 
+def _tem_terminal() -> bool:
+    """Há um terminal de verdade nos dois lados? (menu e download guiado).
+
+    Existe como função para poder ser substituída nos testes — o CliRunner não
+    é um terminal, e sem isso não dava para exercitar o caminho interativo.
+    """
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
 # --------------------------------------------------------------------------
 # Raiz
 # --------------------------------------------------------------------------
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(context_settings={"help_option_names": ["-h", "--help"]},
+             invoke_without_command=True)
 @click.option("--config", "config_path", type=click.Path(dir_okay=False, path_type=Path),
               default=None, help="Arquivo de configuração alternativo (JSON).")
 @click.option("-v", "--verbose", is_flag=True, help="Log detalhado.")
@@ -52,15 +74,25 @@ def cli(ctx: click.Context, config_path: Path | None, verbose: bool, quiet: bool
 
     \b
     Fluxo típico:
-      transcritor transcribe audio.mp3      transcreve um arquivo
-      transcritor watch                     vigia var/inbox e transcreve sozinho
-      transcritor serve --open              abre a interface web
-      transcritor tui                       painel no terminal
+      transcrever                           menu guiado (para quem não quer decorar comandos)
+      transcrever transcribe audio.mp3      transcreve um arquivo
+      transcrever abrir                     interface no navegador, sem digitar mais nada
+      transcrever watch                     vigia var/inbox e transcreve sozinho
+      transcrever tui                       painel no terminal
     """
     ctx.ensure_object(dict)
     ctx.obj["config"] = config_path
     ctx.obj["verbose"] = verbose
     setup_logging(verbose, quiet)
+
+    # Sem subcomando: em vez de despejar 40 linhas de --help para quem só
+    # digitou o nome do programa, abre o menu. Em pipe/script, imprime a ajuda
+    # (o menu precisa de um terminal de verdade).
+    if ctx.invoked_subcommand is None:
+        if _tem_terminal():
+            _menu(ctx)
+        else:
+            click.echo(ctx.get_help())
 
 
 # --------------------------------------------------------------------------
@@ -80,6 +112,196 @@ def _bar(pct: float | None, width: int = 28) -> str:
         return "[" + "·" * width + "]"
     filled = int(width * max(0.0, min(100.0, pct)) / 100.0)
     return "[" + "█" * filled + "░" * (width - filled) + f"] {pct:5.1f}%"
+
+
+def _tamanho_legivel(mb: float) -> str:
+    if mb >= 1000:
+        return f"{mb / 1000:.1f}".replace(".", ",") + " GB"
+    return f"{mb:.0f} MB"
+
+
+def _progresso_modelo(info: dict) -> None:
+    """Desenha o download do modelo numa linha só, quando há terminal."""
+    if not sys.stdout.isatty():
+        return
+    if info.get("phase") == "downloaded":
+        sys.stdout.write("\r" + " " * 78 + "\r")
+        sys.stdout.flush()
+        return
+    if info.get("phase") != "downloading":
+        return
+    mb = float(info.get("downloaded_mb") or 0.0)
+    esperado = float(info.get("expected_mb") or 0.0)
+    detalhe = f"{mb:,.0f}".replace(",", ".") + " MB"
+    if esperado:
+        detalhe += f" de ~{esperado:,.0f}".replace(",", ".") + " MB"
+    sys.stdout.write("\r  baixando o modelo " + _bar(info.get("percent")) + f"  {detalhe}   ")
+    sys.stdout.flush()
+
+
+def escolher_modelo(cfg: Config) -> bool:
+    """Mostra os modelos com tamanho e qualidade, deixa escolher e grava."""
+    click.echo("")
+    click.echo(f"  {'modelo':<16}{'tamanho':>10}   qualidade")
+    click.echo("  " + "─" * 58)
+    for nome, meta in KNOWN_MODELS.items():
+        baixado = "  (já baixado)" if (cfg.models_dir / f"faster-whisper-{nome}" / "model.bin").exists() else ""
+        click.echo(f"  {nome:<16}{_tamanho_legivel(meta['size_mb']):>10}   {meta['quality']}{baixado}")
+    click.echo("")
+    click.echo("  dica: large-v3-turbo tem qualidade excelente e ocupa metade do large-v3")
+    click.echo("        small é o mais leve, para computadores simples ou internet lenta")
+    click.echo("")
+    try:
+        nome = click.prompt("  qual modelo", type=click.Choice(list(KNOWN_MODELS)),
+                            default="large-v3-turbo", show_default=True)
+    except (click.Abort, EOFError):
+        click.echo("")
+        return False
+
+    cfg.model = nome
+    cfg.__post_init__()
+    caminho = cfg.save()
+    click.echo(f"  modelo padrão agora é {click.style(nome, fg='green')} (salvo em {caminho})")
+    return True
+
+
+def garantir_modelo(cfg: Config, *, permitir_troca: bool = True) -> None:
+    """Baixa o modelo ativo antes de começar, explicando o que vai acontecer.
+
+    O faster-whisper baixaria sozinho, no meio do carregamento do motor, sem
+    aviso nem barra de progresso: de 1,5 a 3 GB de silêncio, que a maioria das
+    pessoas interpreta como travamento. Aqui o download é anunciado, medido e,
+    quando há terminal, escolhido pelo usuário.
+    """
+    if cfg.local_model_path:
+        return
+
+    meta = KNOWN_MODELS.get(cfg.model)
+    if meta is None:  # repositório arbitrário do Hugging Face: sem tamanho previsto
+        click.echo(f"  baixando o modelo '{cfg.model}' (repositório do Hugging Face)…")
+        download_model(cfg.model, cfg, _progresso_modelo)
+        return
+
+    tamanho = _tamanho_legivel(meta["size_mb"])
+    interativo = _tem_terminal()
+
+    if interativo and permitir_troca:
+        click.echo("")
+        click.echo(click.style("  Falta baixar o modelo de transcrição.", fg="yellow", bold=True))
+        click.echo(f"    {cfg.model} · {tamanho} · qualidade {meta['quality']}")
+        click.echo("    é uma vez só — depois disso o programa funciona sem internet")
+        click.echo("")
+        click.echo(f"  {click.style('1', bold=True)}) baixar agora")
+        click.echo(f"  {click.style('2', bold=True)}) escolher outro modelo (menor ou mais rápido)")
+        click.echo(f"  {click.style('0', bold=True)}) cancelar")
+        try:
+            escolha = click.prompt("  escolha", type=click.Choice(["0", "1", "2"]),
+                                   default="1", show_default=True)
+        except (click.Abort, EOFError):
+            click.echo("")
+            raise click.Abort() from None
+        if escolha == "0":
+            raise click.Abort()
+        if escolha == "2":
+            if not escolher_modelo(cfg):
+                raise click.Abort()
+            return garantir_modelo(cfg, permitir_troca=False)
+    else:
+        click.echo(f"  baixando o modelo {cfg.model} ({tamanho}) — só na primeira vez")
+
+    try:
+        caminho = download_model(cfg.model, cfg, _progresso_modelo)
+    except KeyboardInterrupt:
+        click.echo("")
+        raise click.ClickException(
+            "download interrompido. Rode o mesmo comando de novo para continuar") from None
+    except Exception as exc:
+        raise click.ClickException(
+            f"não consegui baixar o modelo: {exc}\n"
+            f"  confira a internet e tente: transcrever models download {cfg.model}") from exc
+
+    click.echo(f"  modelo pronto em {caminho}")
+
+
+def _rodar(ctx: click.Context, *args: str) -> None:
+    """Roda um comando do próprio CLI preservando --config/--verbose."""
+    base: list[str] = []
+    if ctx.obj.get("config"):
+        base += ["--config", str(ctx.obj["config"])]
+    if ctx.obj.get("verbose"):
+        base.append("--verbose")
+    try:
+        cli.main([*base, *args], standalone_mode=False)
+    except click.ClickException as exc:
+        click.echo(click.style(f"  {exc.format_message()}", fg="red"))
+    except click.Abort:
+        click.echo("  cancelado")
+    except SystemExit:
+        pass
+
+
+def _menu_transcrever(ctx: click.Context, cfg: Config) -> None:
+    click.echo("")
+    click.echo("  arraste o arquivo para esta janela ou cole o caminho completo")
+    click.echo("  (uma pasta inteira também serve; para vários, separe por espaço)")
+    try:
+        resposta = click.prompt("  arquivo")
+    except (click.Abort, EOFError):
+        click.echo("")
+        return
+
+    linha = resposta.strip().strip("'\"")
+    # Caminho com espaço vem entre aspas de forma inconsistente; se a linha
+    # inteira existe como caminho, ela vence o chute por divisão.
+    if Path(linha).expanduser().exists():
+        candidatos = [linha]
+    else:
+        candidatos = [p.strip().strip("'\"") for p in resposta.split() if p.strip()]
+
+    existentes = [c for c in candidatos if Path(c).expanduser().exists()]
+    if not existentes:
+        click.echo(click.style(f"  não encontrei: {linha}", fg="red"))
+        return
+    _rodar(ctx, "transcribe", *existentes)
+
+
+def _menu(ctx: click.Context) -> None:
+    """Menu para quem não quer decorar comandos."""
+    cfg = load_cfg(ctx)
+    click.echo("")
+    click.echo(click.style("  transcritor", fg="cyan", bold=True)
+               + "  transcrição de áudio e vídeo em português, no seu computador")
+    click.echo("  " + click.style("nada é enviado para a internet", dim=True))
+
+    while True:
+        modelo = cfg.model + ("" if cfg.local_model_path else "  (ainda não baixado)")
+        click.echo("")
+        click.echo(f"  modelo: {click.style(modelo, fg='green')}")
+        click.echo(f"  arquivos: {cfg.inbox}")
+        click.echo("")
+        click.echo(f"  {click.style('1', bold=True)}) transcrever um arquivo ou uma pasta")
+        click.echo(f"  {click.style('2', bold=True)}) abrir a interface no navegador (arrastar e soltar)")
+        click.echo(f"  {click.style('3', bold=True)}) baixar ou trocar o modelo")
+        click.echo(f"  {click.style('4', bold=True)}) conferir a instalação")
+        click.echo(f"  {click.style('0', bold=True)}) sair")
+        try:
+            escolha = click.prompt("\n  escolha", type=click.Choice(["0", "1", "2", "3", "4"]),
+                                   default="1", show_default=True)
+        except (click.Abort, EOFError):
+            click.echo("")
+            return
+
+        if escolha == "0":
+            return
+        if escolha == "1":
+            _menu_transcrever(ctx, cfg)
+        elif escolha == "2":
+            _rodar(ctx, "abrir")
+        elif escolha == "3":
+            if escolher_modelo(cfg):
+                garantir_modelo(cfg)
+        else:
+            _rodar(ctx, "doctor")
 
 
 @cli.command("transcribe", short_help="Transcreve arquivos de áudio/vídeo.")
@@ -153,9 +375,9 @@ def cmd_transcribe(ctx: click.Context, paths: tuple[Path, ...], outdir: Path | N
                f" · idioma {cfg.language or 'auto'} · {len(targets)} arquivo(s) · {_human_bytes(total_bytes)}")
 
     if not cfg.local_model_path:
-        click.echo(click.style(
-            f"  (!) modelo '{cfg.model}' ainda não está em {cfg.model_dir}; será baixado agora",
-            fg="yellow"))
+        # O download acontece agora, anunciado e medido. Se ficasse para o
+        # carregamento do motor, seriam 1,5 a 3 GB de silêncio.
+        garantir_modelo(cfg)
 
     pipeline = Pipeline(cfg, engine)
     rcs: dict[str, int] = {}
@@ -268,6 +490,7 @@ def cmd_watch(ctx: click.Context, once: bool, interval: float | None, workers: i
         cfg.model = model
         cfg.__post_init__()
     fmts = tuple(formats) if formats else cfg.formats
+    garantir_modelo(cfg)
 
     store = JobStore(cfg)
     runner = Runner(cfg, store, workers=cfg.watch_workers, formats=fmts, loudnorm=loudnorm)
@@ -302,6 +525,13 @@ def cmd_watch(ctx: click.Context, once: bool, interval: float | None, workers: i
             click.echo(f"[{stamp}] motor pronto em {data.get('seconds')}s")
         elif event == "engine_error":
             click.echo(f"[{stamp}] " + click.style(f"falha no motor: {data.get('error')}", fg="red"))
+        elif event == "model_progress":
+            if data.get("percent") is not None:
+                sys.stdout.write("\r        modelo " + _bar(data["percent"]))
+                sys.stdout.flush()
+        elif event == "model_start":
+            sys.stdout.write("\r" + " " * 70 + "\r")
+            click.echo(f"[{stamp}] baixando o modelo {data.get('model')}…")
         elif event == "job_start":
             click.echo(f"[{stamp}] ▶ {data.get('filename')}")
         elif event == "job_progress":
@@ -371,8 +601,266 @@ def cmd_tui(ctx: click.Context, no_watch: bool, model: str | None) -> None:
         cfg.__post_init__()
     if not sys.stdout.isatty():
         raise click.ClickException("a TUI precisa de um terminal interativo")
+    # Antes do curses tomar a tela: aqui ainda dá para mostrar a barra de
+    # progresso do download do modelo com clareza.
+    garantir_modelo(cfg)
     from .tui import run_tui
     sys.exit(run_tui(cfg, watch=not no_watch))
+
+
+# --------------------------------------------------------------------------
+# abrir (navegador) — o caminho de quem não quer terminal
+# --------------------------------------------------------------------------
+
+def _servidor_no_ar(host: str, port: int, *, timeout: float = 1.0) -> bool:
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/api/status", timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def _esperar_servidor(host: str, port: int, *, limite: float = 40.0) -> bool:
+    fim = time.time() + limite
+    while time.time() < fim:
+        if _servidor_no_ar(host, port):
+            return True
+        time.sleep(0.3)
+    return False
+
+
+def _separar_media(paths: tuple[Path, ...]) -> tuple[list[Path], list[str]]:
+    """Separa o que dá para transcrever do que foi ignorado."""
+    arquivos: list[Path] = []
+    ignorados: list[str] = []
+    for p in paths:
+        if p.is_dir():
+            achados = [f for f in sorted(p.rglob("*")) if f.is_file() and is_media_file(f)]
+            if achados:
+                arquivos.extend(achados)
+            else:
+                ignorados.append(f"{p} (nenhum áudio ou vídeo dentro)")
+        elif is_media_file(p):
+            arquivos.append(p)
+        else:
+            ignorados.append(str(p))
+    return arquivos, ignorados
+
+
+def _copiar_para_inbox(cfg: Config, arquivos: list[Path]) -> list[Path]:
+    """Plano B: copia os arquivos para a pasta vigiada, sem sobrescrever nada."""
+    destinos: list[Path] = []
+    for f in arquivos:
+        destino = cfg.inbox / f.name
+        n = 1
+        while destino.exists():
+            destino = cfg.inbox / f"{f.stem} ({n}){f.suffix}"
+            n += 1
+        shutil.copy2(f, destino)
+        destinos.append(destino)
+    return destinos
+
+
+def _enfileirar_pela_api(host: str, port: int, arquivos: list[Path]) -> int:
+    """Pede ao servidor que ponha os arquivos na fila imediatamente.
+
+    Melhor que copiar para a pasta vigiada: o arquivo do usuário fica onde
+    está, e a transcrição começa na hora (a vigília tem um intervalo de
+    estabilidade antes de aceitar um arquivo novo).
+    """
+    corpo = json.dumps({"paths": [str(f.resolve()) for f in arquivos]}).encode("utf-8")
+    pedido = urllib.request.Request(
+        f"http://{host}:{port}/api/jobs", data=corpo, method="POST",
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(pedido, timeout=15) as resposta:
+        dados = json.loads(resposta.read().decode("utf-8"))
+    return int(dados.get("count") or 0)
+
+
+def _subir_servidor(cfg: Config, host: str, port: int, config_path: Path | None = None) -> None:
+    """Sobe a interface em segundo plano, com o terminal livre."""
+    log = cfg.log_file.parent / "web.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [sys.executable, "-m", "transcritor"]
+    if config_path:
+        cmd += ["--config", str(config_path)]
+    cmd += ["serve", "--host", host, "--port", str(port)]
+    with open(log, "ab") as saida:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=saida, stderr=saida,
+                         start_new_session=True)
+
+
+@cli.command("abrir", short_help="Abre a interface no navegador, com os arquivos na fila.")
+@click.argument("paths", nargs=-1, type=click.Path(exists=True, dir_okay=True, path_type=Path))
+@click.option("--host", default=None, help="Endereço (padrão 127.0.0.1).")
+@click.option("-p", "--port", type=int, default=None, help="Porta (padrão 8765).")
+@click.option("--sem-navegador", is_flag=True, help="Prepara tudo, mas não abre o navegador.")
+@click.pass_context
+def cmd_abrir(ctx: click.Context, paths: tuple[Path, ...], host: str | None, port: int | None,
+              sem_navegador: bool) -> None:
+    """Põe os arquivos na fila, sobe a interface e abre o navegador.
+
+    É o comando por trás do ícone do menu e do "Abrir com o transcritor":
+    feito para quem não vai digitar mais nada depois da instalação.
+    """
+    cfg = load_cfg(ctx)
+    host = host or cfg.web_host
+    port = port or cfg.web_port
+    url = f"http://{host}:{port}/"
+
+    arquivos, ignorados = _separar_media(paths) if paths else ([], [])
+
+    if not _servidor_no_ar(host, port):
+        click.echo("  preparando o transcritor…")
+        _subir_servidor(cfg, host, port, ctx.obj.get("config"))
+        if not _esperar_servidor(host, port):
+            raise click.ClickException(
+                "não consegui subir a interface. Rode 'transcrever serve' para ver o erro")
+
+    if arquivos:
+        try:
+            n = _enfileirar_pela_api(host, port, arquivos)
+            click.echo(f"  {n} arquivo(s) na fila")
+        except Exception:
+            # A API falhou (servidor antigo, porta trocada): a pasta vigiada
+            # sempre funciona, só demora o intervalo de varredura.
+            destinos = _copiar_para_inbox(cfg, arquivos)
+            click.echo(f"  {len(destinos)} arquivo(s) na pasta vigiada")
+            with contextlib.suppress(Exception):
+                urllib.request.urlopen(
+                    urllib.request.Request(f"http://{host}:{port}/api/scan", method="POST"),
+                    timeout=10).read()
+
+    for item in ignorados:
+        click.echo(click.style(f"  ignorado (não parece áudio/vídeo): {item}", fg="yellow"))
+
+    click.echo(f"  interface em {click.style(url, fg='cyan', underline=True)}")
+    if not sem_navegador:
+        webbrowser.open(url)
+
+
+# --------------------------------------------------------------------------
+# desktop (ícone no menu + "Abrir com")
+# --------------------------------------------------------------------------
+
+DATA_DIR = Path(__file__).resolve().parent / "data"
+
+
+def _xdg_data() -> Path:
+    raiz = os.environ.get("XDG_DATA_HOME")
+    return Path(raiz).expanduser() if raiz else Path.home() / ".local" / "share"
+
+
+def _apps_dir() -> Path:
+    return _xdg_data() / "applications"
+
+
+def _icone_dir() -> Path:
+    return _xdg_data() / "icons" / "hicolor" / "scalable" / "apps"
+
+
+# Tipos que o "Abrir com" deve reconhecer. A maioria vem do próprio Python;
+# estes ficam de fora ou saem errados e precisam de ajuste manual.
+_MIMES_EXTRA = {
+    ".ts": "video/mp2t",
+    ".opus": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".amr": "audio/amr",
+}
+_MIMES_SEMPRE = (
+    "audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/flac",
+    "video/mp4", "video/webm", "video/x-matroska", "video/quicktime",
+)
+
+
+def _mimetypes_suportados() -> list[str]:
+    tipos = set(_MIMES_SEMPRE)
+    for ext in AUDIO_EXTENSIONS:
+        tipo = _MIMES_EXTRA.get(ext) or mimetypes.guess_type("x" + ext)[0]
+        if tipo:
+            tipos.add(tipo.lower())
+    return sorted(tipos)
+
+
+def _atualizar_caches_desktop() -> None:
+    for cmd in (["update-desktop-database", str(_apps_dir())],
+                ["gtk-update-icon-cache", "-q", "-t", str(_icone_dir().parents[1])]):
+        if shutil.which(cmd[0]):
+            with contextlib.suppress(Exception):
+                subprocess.run(cmd, check=False, capture_output=True)
+
+
+def _arquivos_desktop() -> tuple[Path, Path, Path]:
+    return (_apps_dir() / "transcritor.desktop",
+            _apps_dir() / "transcritor-arquivo.desktop",
+            _icone_dir() / "transcritor.svg")
+
+
+@cli.group("desktop", short_help='Instala o ícone no menu e o "Abrir com".')
+def grp_desktop() -> None:
+    """Integração com a área de trabalho (ícone do menu e "Abrir com")."""
+
+
+@grp_desktop.command("instalar")
+def cmd_desktop_instalar() -> None:
+    """Cria o ícone no menu e a opção "Abrir com o transcritor" (sem root)."""
+    if sys.platform != "linux":
+        raise click.ClickException("a integração com a área de trabalho existe só no Linux")
+
+    # O .desktop precisa de um Exec absoluto. Instalado, é o comando do PATH;
+    # rodando do código-fonte, vale a pena invocar o módulo direto.
+    launcher = shutil.which("transcrever") or shutil.which("transcritor")
+    exec_cmd = launcher if launcher else f"{sys.executable} -m transcritor"
+    if " " in exec_cmd:
+        exec_cmd = f'"{exec_cmd}"'
+
+    _apps_dir().mkdir(parents=True, exist_ok=True)
+    _icone_dir().mkdir(parents=True, exist_ok=True)
+    mimes = ";".join(_mimetypes_suportados()) + ";"
+
+    modelos = {"transcritor.desktop": "transcritor.desktop",
+               "transcritor-arquivo.desktop": "transcritor-arquivo.desktop"}
+    faltando = [m for m in modelos if not (DATA_DIR / m).exists()]
+    if faltando:
+        raise click.ClickException(
+            "arquivos de integração ausentes na instalação: " + ", ".join(faltando))
+
+    for nome in modelos:
+        texto = (DATA_DIR / nome).read_text(encoding="utf-8")
+        texto = texto.replace("__EXEC__", exec_cmd).replace("__MIMES__", mimes)
+        destino = _apps_dir() / nome
+        destino.write_text(texto, encoding="utf-8")
+        destino.chmod(0o644)
+        click.echo(f"  criado: {destino}")
+
+    icone_origem = DATA_DIR / "transcritor.svg"
+    if icone_origem.exists():
+        destino = _icone_dir() / "transcritor.svg"
+        shutil.copy2(icone_origem, destino)
+        click.echo(f"  criado: {destino}")
+
+    _atualizar_caches_desktop()
+    click.echo("")
+    click.echo('  procure "transcritor" no menu, ou clique com o botão direito em um')
+    click.echo('  áudio e escolha "Abrir com → Transcrever com o transcritor".')
+
+
+@grp_desktop.command("remover")
+def cmd_desktop_remover() -> None:
+    """Remove o ícone do menu e o "Abrir com"."""
+    for p in _arquivos_desktop():
+        if p.exists():
+            p.unlink()
+            click.echo(f"  removido: {p}")
+    _atualizar_caches_desktop()
+
+
+@grp_desktop.command("status")
+def cmd_desktop_status() -> None:
+    """Mostra o que está instalado na área de trabalho."""
+    for p in _arquivos_desktop():
+        marca = click.style("sim", fg="green") if p.exists() else click.style("não", fg="yellow")
+        click.echo(f"  {marca:<12} {p}")
 
 
 # --------------------------------------------------------------------------
@@ -402,20 +890,41 @@ def cmd_models_list(ctx: click.Context) -> None:
 @grp_models.command("download")
 @click.argument("name", type=click.Choice([*KNOWN_MODELS, "repo/qualquer"]))
 @click.option("--repo", default=None, help="Repositório HF arbitrário (Systran/faster-whisper-…).")
+@click.option("--usar", is_flag=True, help="Definir como modelo padrão ao terminar.")
 @click.pass_context
-def cmd_models_download(ctx: click.Context, name: str, repo: str | None) -> None:
-    """Baixa um modelo para var/../models (fica offline depois)."""
+def cmd_models_download(ctx: click.Context, name: str, repo: str | None, usar: bool) -> None:
+    """Baixa um modelo (fica offline depois)."""
     cfg = load_cfg(ctx)
-    target = repo or name
+    alvo = repo or name
+    meta = KNOWN_MODELS.get(name)
 
-    def progress(info: dict) -> None:
-        if info.get("phase") == "downloading":
-            click.echo(f"baixando {info['repo']} → {info['path']}")
+    if meta:
+        click.echo(f"modelo : {name} · {_tamanho_legivel(meta['size_mb'])} · qualidade {meta['quality']}")
+    else:
+        click.echo(f"modelo : {alvo} (repositório do Hugging Face)")
+    click.echo(f"destino: {cfg.models_dir}")
+    click.echo("")
 
-    click.echo(f"modelo: {target}  (~{KNOWN_MODELS.get(name, {}).get('size_mb', '?')} MB)")
-    path = download_model(target, cfg, progress)
+    try:
+        path = download_model(alvo, cfg, _progresso_modelo)
+    except KeyboardInterrupt:
+        raise click.ClickException(
+            "download interrompido. Rode de novo para continuar de onde parou") from None
+
     click.echo(click.style(f"pronto: {path}", fg="green"))
-    click.echo("use com:  transcritor transcribe -m " + name + " arquivo.mp3")
+
+    if meta is None:
+        if usar:
+            click.echo(click.style("aviso: --usar só vale para os modelos conhecidos", fg="yellow"))
+    elif usar or cfg.local_model_path is None:
+        # Pedido explícito, ou o usuário estava sem nenhum modelo em disco:
+        # nos dois casos, deixar este como padrão é o que ele espera.
+        cfg.model = name
+        cfg.__post_init__()
+        cfg.save()
+        click.echo(f"modelo padrão agora é {click.style(name, fg='green')}")
+
+    click.echo("transcreva com:  transcrever transcribe arquivo.mp3")
 
 
 @grp_models.command("use")
@@ -454,6 +963,7 @@ def cmd_detect(ctx: click.Context, paths: tuple[Path, ...]) -> None:
     if not targets:
         raise click.ClickException("nenhum arquivo de áudio/vídeo encontrado")
 
+    garantir_modelo(cfg)
     engine = Engine(cfg)
     for t in targets:
         try:

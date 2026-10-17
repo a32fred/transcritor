@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Transcrever com o transcritor
+GenericName=Transcrição de áudio
+Comment=Transcreve este arquivo e mostra o resultado no navegador
+Exec=__EXEC__ abrir %F
+Icon=transcritor
+Terminal=false
+Categories=AudioVideo;Audio;
+MimeType=__MIMES__
+# Aparece no "Abrir com" dos arquivos, mas não duplica o item do menu:
+# o item do menu é o transcritor.desktop, que abre a interface completa.
+NoDisplay=true
+StartupNotify=false

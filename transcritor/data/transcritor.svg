@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="iconeTitulo iconeDesc">
+  <title id="iconeTitulo">transcritor</title>
+  <desc id="iconeDesc">Ícone do transcritor: uma forma de onda em decaimento que se transforma nas linhas do texto transcrito, sobre um quadro escuro arredondado.</desc>
+
+  <!--
+    transcritor — ícone de aplicativo (o que aparece no menu do sistema).
+    Mesmo símbolo da marca, com o quadro escuro do produto atrás: assim ele
+    mantém o contorno e continua legível tanto em painel claro quanto escuro,
+    que é o problema de um ícone de tinta escura com fundo transparente.
+    A ponta da última linha traz o cursor do terminal no azul da marca.
+  -->
+  <rect width="256" height="256" rx="56" fill="#0e1116"/>
+  <g transform="translate(16.7 16) scale(7)" fill="#e6edf3">
+    <!-- forma de onda em decaimento -->
+    <rect x="1.4" y="4.5" width="2.9" height="23" rx="1.45"/>
+    <rect x="6.6" y="8" width="2.9" height="16" rx="1.45"/>
+    <rect x="11.8" y="10.75" width="2.9" height="10.5" rx="1.45"/>
+    <!-- linhas do texto transcrito -->
+    <rect x="17.6" y="7.2" width="12.9" height="3.2" rx="1.6"/>
+    <rect x="17.6" y="14.4" width="12.9" height="3.2" rx="1.6"/>
+    <rect x="17.6" y="21.6" width="6.6" height="3.2" rx="1.6"/>
+  </g>
+  <!-- cursor do terminal -->
+  <rect x="204.3" y="152.5" width="25.2" height="51.8" rx="7" fill="#4cc2ff"/>
+</svg>

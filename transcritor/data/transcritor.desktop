@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=transcritor
+GenericName=Transcrição de áudio
+Comment=Transcrever áudio e vídeo no próprio computador, sem enviar nada para a internet
+Exec=__EXEC__ serve --open
+Icon=transcritor
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=transcricao;transcrever;audio;legenda;srt;whisper;offline;
+StartupNotify=false
