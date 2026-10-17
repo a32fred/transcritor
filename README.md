@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/logo-escuro.svg">
-    <img src="docs/img/logo.svg" alt="transcritor" width="440">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/a32fred/transcritor/main/docs/img/logo-escuro.svg">
+    <img src="https://raw.githubusercontent.com/a32fred/transcritor/main/docs/img/logo.svg" alt="transcritor" width="440">
   </picture>
 </p>
 
@@ -10,14 +10,15 @@
 <p align="center">Transcrição de áudio e vídeo local, com foco em português do Brasil e pontuação legível.</p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-blue.svg" alt="Licença MIT"></a>
+  <a href="https://github.com/a32fred/transcritor/blob/main/LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-blue.svg" alt="Licença MIT"></a>
   <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+">
+  <a href="https://pypi.org/project/transcritor/"><img src="https://img.shields.io/pypi/v/transcritor.svg" alt="Versão no PyPI"></a>
   <a href="https://github.com/a32fred/transcritor/actions/workflows/ci.yml"><img src="https://github.com/a32fred/transcritor/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/offline-sem%20nuvem-green.svg" alt="Offline, sem nuvem">
   <img src="https://img.shields.io/badge/faster--whisper-large--v3-orange.svg" alt="faster-whisper large-v3">
 </p>
 
-O **transcritor** é uma ferramenta open source para transformar reuniões, entrevistas, aulas e mensagens de voz em texto e legendas sem enviar gravações para serviços externos. Usa faster-whisper e CTranslate2, por padrão em CPU com `int8` e modelo `large-v3`, com prompt inicial voltado à pontuação em PT-BR. Depois de instalar as dependências e baixar o modelo escolhido, a transcrição funciona inteiramente offline, sem chave de API. Versão **1.1.0**, por [Frederico Carlos (@a32fred)](https://github.com/a32fred).
+O **transcritor** é uma ferramenta open source para transformar reuniões, entrevistas, aulas e mensagens de voz em texto e legendas sem enviar gravações para serviços externos. Usa faster-whisper e CTranslate2, por padrão em CPU com `int8` e modelo `large-v3`, com prompt inicial voltado à pontuação em PT-BR. Depois de instalar as dependências e baixar o modelo escolhido, a transcrição funciona inteiramente offline, sem chave de API. Versão **1.1.1**, publicada no [PyPI](https://pypi.org/project/transcritor/) e por [Frederico Carlos (@a32fred)](https://github.com/a32fred).
 
 ## Sumário
 
@@ -55,11 +56,11 @@ O **transcritor** é uma ferramenta open source para transformar reuniões, entr
 
 ### Painel no terminal
 
-![TUI do transcritor: fila e acompanhamento de transcrições](docs/img/tui.svg)
+![TUI do transcritor: fila e acompanhamento de transcrições](https://raw.githubusercontent.com/a32fred/transcritor/main/docs/img/tui.svg)
 
 ### Interface web local
 
-![Interface web do transcritor: envio de arquivos, fila e visualizador](docs/img/web.png)
+![Interface web do transcritor: envio de arquivos, fila e visualizador](https://raw.githubusercontent.com/a32fred/transcritor/main/docs/img/web.png)
 
 A interface web tem tema escuro, envio de múltiplos arquivos por arrastar-e-soltar, filtros por nome e status, progresso ao vivo e registro de eventos. O visualizador oferece downloads e um player do original com timestamps clicáveis e destaque do segmento em reprodução; a reprodução depende dos codecs aceitos pelo navegador.
 
@@ -103,7 +104,7 @@ curl -fsSL https://raw.githubusercontent.com/a32fred/transcritor/main/instalar.s
 O instalador faz, na ordem:
 
 1. descobre a sua distribuição e instala o que falta — **FFmpeg**, Python e `pipx` —, pedindo a sua senha para usar `sudo`;
-2. instala o transcritor **isolado, com `pipx`**: sem ambiente virtual manual, sem link simbólico, sem variável de ambiente e sem editar arquivos do seu shell;
+2. instala o transcritor **isolado, com `pipx`**, direto do [PyPI](https://pypi.org/project/transcritor/): sem ambiente virtual manual, sem link simbólico, sem variável de ambiente e sem editar arquivos do seu shell;
 3. cria o **ícone no menu** e a opção **“Abrir com o transcritor”** para arquivos de áudio e vídeo;
 4. mostra os modelos com tamanho e qualidade e baixa o que você escolher (uma vez só);
 5. roda o diagnóstico e resume como usar.
@@ -131,19 +132,26 @@ A interface no navegador é completa: upload por arrastar e soltar, progresso ao
 
 ### Outras formas de instalar
 
-Com `pipx`, direto do repositório — o mesmo que o instalador usa:
+O transcritor está publicado no [PyPI](https://pypi.org/project/transcritor/). Com `pipx`, que é o que o instalador usa:
 
 ```bash
-pipx install git+https://github.com/a32fred/transcritor
+pipx install transcritor     # instalar
+pipx upgrade transcritor     # atualizar
 ```
 
 Com [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
-uv tool install git+https://github.com/a32fred/transcritor
+uv tool install transcritor
 ```
 
-Manual, em um ambiente virtual — o caminho de quem vai mexer no código (veja [CONTRIBUTING.md](CONTRIBUTING.md)):
+Do repositório, quando você quer acompanhar o desenvolvimento:
+
+```bash
+pipx install git+https://github.com/a32fred/transcritor
+```
+
+Manual, em um ambiente virtual — o caminho de quem vai mexer no código (veja [CONTRIBUTING.md](https://github.com/a32fred/transcritor/blob/main/CONTRIBUTING.md)):
 
 ```bash
 git clone https://github.com/a32fred/transcritor
@@ -535,7 +543,7 @@ transcrever config set device=cpu compute_type=int8
 
 Sem opções específicas de comando, a precedência é **variáveis de ambiente > `config.json` > padrões do código**. As opções de comando implementadas como substituições são aplicadas depois da carga e prevalecem naquela execução.
 
-O arquivo padrão é `~/.local/share/transcritor/config.json` (`$XDG_DATA_HOME/transcritor/config.json`, quando definido) — ou `~/transcritor/config.json` para quem vem do layout antigo. `--config ARQUIVO` escolhe outro JSON e os comandos que salvam configuração escrevem nesse mesmo caminho. Consulte [config.example.json](config.example.json) para um exemplo inicial; `config show --json` mostra todos os campos efetivos.
+O arquivo padrão é `~/.local/share/transcritor/config.json` (`$XDG_DATA_HOME/transcritor/config.json`, quando definido) — ou `~/transcritor/config.json` para quem vem do layout antigo. `--config ARQUIVO` escolhe outro JSON e os comandos que salvam configuração escrevem nesse mesmo caminho. Consulte [config.example.json](https://github.com/a32fred/transcritor/blob/main/config.example.json) para um exemplo inicial; `config show --json` mostra todos os campos efetivos.
 
 ### Caminhos
 
@@ -663,7 +671,7 @@ Exemplo de configuração parcial válida:
 
 ## Execução automática (systemd)
 
-O projeto inclui um serviço **de usuário** em [docs/transcritor-watch.service](docs/transcritor-watch.service). Ele usa o executável `transcrever` instalado no `~/.local/bin` (pipx/uv), reinicia após falhas e reduz a prioridade de CPU/E/S.
+O projeto inclui um serviço **de usuário** em [docs/transcritor-watch.service](https://github.com/a32fred/transcritor/blob/main/docs/transcritor-watch.service). Ele usa o executável `transcrever` instalado no `~/.local/bin` (pipx/uv), reinicia após falhas e reduz a prioridade de CPU/E/S.
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -847,7 +855,7 @@ Propostas devem preservar o processamento local e explicitar qualquer dependênc
 
 ## Contribuindo
 
-Leia [CONTRIBUTING.md](CONTRIBUTING.md) para orientações de contribuição. Relatos de problemas devem incluir versão, sistema, saída de `doctor`, comando utilizado e comportamento esperado/observado. Não publique gravações privadas; prefira amostras mínimas que possam ser compartilhadas.
+Leia [CONTRIBUTING.md](https://github.com/a32fred/transcritor/blob/main/CONTRIBUTING.md) para orientações de contribuição. Relatos de problemas devem incluir versão, sistema, saída de `doctor`, comando utilizado e comportamento esperado/observado. Não publique gravações privadas; prefira amostras mínimas que possam ser compartilhadas.
 
 Para rodar a suíte na raiz do projeto, com o ambiente virtual ativado:
 
@@ -864,7 +872,7 @@ Ao propor alterações, mantenha os padrões do projeto, acrescente testes perti
 
 ## Licença
 
-Distribuído sob a [licença MIT](LICENSE). Autor: **Frederico Carlos** ([a32fred](https://github.com/a32fred)). As dependências e os modelos mantêm suas próprias licenças.
+Distribuído sob a [licença MIT](https://github.com/a32fred/transcritor/blob/main/LICENSE). Autor: **Frederico Carlos** ([a32fred](https://github.com/a32fred)). As dependências e os modelos mantêm suas próprias licenças.
 
 ## Agradecimentos
 

@@ -1,0 +1,78 @@
+name: Publicar no PyPI
+
+# Um lançamento publicado no GitHub (etiqueta vX.Y.Z) vira pacote no PyPI.
+#
+# O envio usa Trusted Publishing: o PyPI confia neste repositório, neste
+# arquivo e neste ambiente por OIDC, e o token é gerado na hora. Nada de token
+# guardado em segredo do GitHub, que pode vazar ou vencer.
+#
+# Configuração única, feita uma vez no site do PyPI, em
+# https://pypi.org/manage/account/publishing/ (e depois em
+# https://pypi.org/manage/project/transcritor/settings/publishing/):
+#
+#   PyPI Project Name : transcritor
+#   Owner             : a32fred
+#   Repository name   : transcritor
+#   Workflow name     : publish.yml
+#   Environment name  : pypi
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  construir:
+    name: Construir e conferir os artefatos
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v4
+      - name: Preparar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Construir a wheel e o pacote de código-fonte
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+      - name: Conferir os metadados como o PyPI confere
+        run: python -m twine check --strict dist/*
+      # Só publica o que instala: as dependências vêm do PyPI de verdade, então
+      # um nome errado em [project.dependencies] para o envio aqui.
+      - name: Instalar a wheel num ambiente limpo
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install dist/*.whl
+          /tmp/venv/bin/transcrever --version
+      - name: Guardar os artefatos para o envio
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publicar:
+    name: Enviar para o PyPI
+    needs: construir
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/transcritor
+    permissions:
+      id-token: write      # Trusted Publishing: o token do PyPI nasce aqui
+      attestations: write  # atestados digitais dos arquivos (PEP 740)
+    steps:
+      - name: Baixar os artefatos conferidos
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publicar
+        # Ação oficial do projeto PyPA. Publicar por etiqueta de versão, nunca
+        # por ramo: o pacote do PyPI não pode ser reescrito depois.
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true

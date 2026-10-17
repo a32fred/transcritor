@@ -1,14 +1,17 @@
 [build-system]
-requires = ["setuptools>=68"]
+# >=77 é o mínimo que entende a licença como expressão SPDX (PEP 639), que é
+# como o PyPI passou a receber a informação de licença.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "transcritor"
-version = "1.1.0"
+version = "1.1.1"
 description = "Transcrição local de áudio em PT-BR com faster-whisper (100% offline)"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
   { name = "Frederico Carlos", email = "fredericocarlos.a32@gmail.com" },
 ]
@@ -31,15 +34,17 @@ classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: End Users/Desktop",
-  "License :: OSI Approved :: MIT License",
   "Natural Language :: Portuguese (Brazilian)",
+  "Operating System :: MacOS",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Multimedia :: Sound/Audio :: Speech",
+  "Topic :: Multimedia :: Video",
   "Topic :: Text Processing",
 ]
 dependencies = [
@@ -70,6 +75,7 @@ Homepage = "https://github.com/a32fred/transcritor"
 Repository = "https://github.com/a32fred/transcritor"
 Issues = "https://github.com/a32fred/transcritor/issues"
 Changelog = "https://github.com/a32fred/transcritor/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/a32fred/transcritor#readme"
 
 [project.scripts]
 transcritor = "transcritor.cli:main"

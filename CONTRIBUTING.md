@@ -104,3 +104,36 @@ O download inicial requer internet; depois, a transcrição usa o modelo local, 
 O `tiny` é útil para um teste rápido em CPU, mas tem qualidade inferior ao padrão `large-v3`.
 Confira o texto e os tempos das legendas na saída indicada pelo comando. Não envie esses arquivos no PR.
 Esse teste manual não é requisito da suíte automatizada nem da CI.
+
+## Publicar uma versão (mantenedores)
+
+O transcritor é publicado no [PyPI](https://pypi.org/project/transcritor/) a partir de uma etiqueta.
+O envio usa [Trusted Publishing](https://docs.pypi.org/trusted-publishers/): o PyPI confia neste
+repositório, no arquivo `.github/workflows/publish.yml` e no ambiente `pypi`, então **não existe
+token guardado** — nem no GitHub, nem na sua máquina. O token é criado na hora, e cada arquivo sai
+com um atestado digital de que foi construído aqui, a partir desta etiqueta.
+
+Passo a passo:
+
+1. Atualize a versão em `transcritor/__init__.py` **e** em `pyproject.toml` (o teste
+   `tests/test_empacotamento.py` falha se elas divergirem) e registre a mudança no `CHANGELOG.md`.
+2. Envie para `main` e espere a CI ficar verde — o trabalho `empacotamento` constrói a wheel e o
+   pacote de código-fonte, confere os metadados e roda a suíte contra a wheel instalada.
+3. Crie a etiqueta e o lançamento:
+   ```shell
+   git tag -a v1.1.1 -m "transcritor 1.1.1"
+   git push origin v1.1.1
+   gh release create v1.1.1 --title "transcritor 1.1.1" --notes-from-tag
+   ```
+4. O lançamento publicado dispara o `publish.yml`, que constrói, confere e envia ao PyPI. Acompanhe
+   em <https://github.com/a32fred/transcritor/actions>.
+
+Duas coisas são irreversíveis: **um número de versão não pode ser reaproveitado** no PyPI, e um
+arquivo publicado não pode ser substituído (no máximo retirado do ar). Se algo sair errado depois do
+envio, corrija e publique a versão seguinte.
+
+Para ensaiar antes, sem gastar um número: use o [TestPyPI](https://test.pypi.org/) com
+`python -m build` e `uv publish --publish-url https://test.pypi.org/legacy/`, e instale de lá com
+`pipx install --index-url https://test.pypi.org/simple/ transcritor`. O nome precisa existir também
+no TestPyPI, com o mesmo Trusted Publisher apontando para lá.
+

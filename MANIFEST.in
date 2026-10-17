@@ -1,0 +1,34 @@
+# Arquivos que entram no pacote de código-fonte (sdist).
+#
+# A wheel não depende deste arquivo: os dados de dentro do pacote
+# (templates da interface e arquivos .desktop) vêm de
+# [tool.setuptools.package-data] no pyproject.toml.
+#
+# O objetivo aqui é que o sdist seja suficiente para instalar E para
+# empacotar em distribuições (RPM/DEB), com os testes, a documentação e o
+# instalador de uma linha junto do código.
+
+include LICENSE
+include README.md
+include CHANGELOG.md
+include CONTRIBUTING.md
+include CODE_OF_CONDUCT.md
+include SECURITY.md
+include config.example.json
+include instalar.sh
+include Makefile
+include requirements.txt
+include pyproject.toml
+include bin/transcrever
+
+recursive-include docs *.service *.svg *.png
+recursive-include tests *.py
+
+# Dados locais de quem usa o programa não entram no pacote.
+exclude config.json
+prune var
+prune models
+prune .github
+
+global-exclude *.py[cod]
+global-exclude .DS_Store

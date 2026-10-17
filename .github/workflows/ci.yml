@@ -47,3 +47,52 @@ jobs:
       # O motor é dublado nos testes: não baixar modelos nesta CI.
       - name: Executar testes sem GPU nem modelos
         run: python -m pytest tests/ -q --durations=10
+
+  empacotamento:
+    name: Artefatos e instalação de teste
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v4
+      - name: Preparar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar ffmpeg e ffprobe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Construir a wheel e o pacote de código-fonte
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+      - name: Conferir os metadados como o PyPI confere
+        run: python -m twine check --strict dist/*
+      # A suíte roda fora do repositório de propósito: é a única forma de o
+      # Python importar o pacote instalado em vez do código ao lado dos testes.
+      - name: Rodar a suíte contra a wheel instalada
+        run: |
+          python -m venv /tmp/venv-wheel
+          /tmp/venv-wheel/bin/pip install dist/*.whl pytest
+          cp -r tests /tmp/suite
+          cd /tmp/suite && /tmp/venv-wheel/bin/python -m pytest . -q
+      - name: Conferir que os dados do pacote foram publicados
+        run: |
+          /tmp/venv-wheel/bin/python -c "import importlib, pathlib, pkgutil, transcritor; \
+          [importlib.import_module(m.name) for m in pkgutil.walk_packages(transcritor.__path__, 'transcritor.')]; \
+          dados = pathlib.Path(transcritor.__file__).parent; \
+          assert (dados / 'web/templates/index.html').exists(), 'falta o template da interface'; \
+          assert len(list((dados / 'data').iterdir())) == 3, 'faltam os .desktop e o ícone'; \
+          print('todos os módulos importam e os dados do pacote estão na wheel')"
+      - name: Instalar e usar a partir do pacote de código-fonte
+        run: |
+          python -m venv /tmp/venv-sdist
+          /tmp/venv-sdist/bin/pip install dist/*.tar.gz
+          /tmp/venv-sdist/bin/transcrever --version
+          /tmp/venv-sdist/bin/transcrever info
+      - name: Guardar os artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

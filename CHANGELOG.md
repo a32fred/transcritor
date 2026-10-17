@@ -4,6 +4,46 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/)
 e o projeto adota [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [1.1.1] - 2026-10-17
+
+Primeira publicação no PyPI.
+
+### Corrigido
+
+- A transcrição não quebra mais com o PyAV 19. Quem decodifica o áudio passa a ser o **ffmpeg**,
+  e o modelo recebe as amostras prontas (16 kHz, mono, float32). O PyAV 19 removeu o argumento
+  `metadata_errors`, que o faster-whisper 1.2.1 ainda usa ao abrir o arquivo: como o `pip` já
+  instala o PyAV 19 no Python 3.12 ou mais novo, quem instalasse hoje falhava na primeira
+  transcrição com `unexpected keyword argument 'metadata_errors'`.
+- O PyAV deixou de ser dependência direta (ele continua vindo com o faster-whisper, que o
+  importa, mas o transcritor não o usa mais).
+
+### Adicionado
+
+- Pacote publicado no [PyPI](https://pypi.org/project/transcritor/) com os comandos `transcrever` e
+  `transcritor`. `pipx install transcritor` passa a ser a instalação mais rápida — o instalador de
+  uma linha já preferia o PyPI e agora o encontra.
+- Publicação automática a partir das etiquetas, por Trusted Publishing (sem token guardado), com
+  atestados digitais dos artefatos e envio somente depois de `twine check` e da suíte de testes.
+- Verificação de empacotamento na integração contínua: a cada envio, a wheel e o pacote de
+  código-fonte são construídos, conferidos e instalados em ambientes limpos; a suíte roda contra a
+  wheel instalada, fora do repositório, para provar que o que foi publicado funciona.
+- Testes que exercitam o motor de verdade (com um modelo dublê) e a decodificação do áudio — era
+  exatamente o caminho sem cobertura que deixou o problema do PyAV passar.
+- Testes que conferem o empacotamento sem construir nada: versão do `pyproject.toml` igual à do
+  pacote, `requirements.txt` igual às dependências do `pyproject.toml`, comandos e dados declarados.
+- `MANIFEST.in`, para que o pacote de código-fonte traga testes, documentação, o instalador e os
+  dados da interface junto do código — o que também serve de base para os pacotes RPM/DEB.
+
+### Alterado
+
+- Metadados no padrão atual: licença como expressão SPDX (PEP 639), Linux e macOS declarados e
+  `Documentation` apontando para o README.
+- No README, links e imagens passam a ser absolutos: no PyPI, caminho relativo quebra a imagem e a
+  página fica sem a logo e as capturas.
+
+[1.1.1]: https://github.com/a32fred/transcritor/releases/tag/v1.1.1
+
 ## [1.1.0] - 2026-10-17
 
 Instalação e primeiro uso pensados para quem não tem conhecimento técnico.

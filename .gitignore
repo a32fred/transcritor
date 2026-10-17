@@ -21,6 +21,7 @@ build/
 dist/
 *.egg-info/
 .eggs/
+uv.lock
 
 # Ferramentas de teste e lint
 .pytest_cache/
