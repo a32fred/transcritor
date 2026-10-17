@@ -2,6 +2,12 @@
 
 Obrigado por contribuir com o transcritor! Siga nosso [Código de Conduta](CODE_OF_CONDUCT.md).
 
+## Usar ou desenvolver?
+
+Se você só quer **usar** o transcritor, este documento não é para você: siga a
+[instalação em um comando](README.md#instalação-em-um-comando) no README. O que vem
+abaixo monta um ambiente de desenvolvimento a partir do código-fonte.
+
 ## Preparar o ambiente
 
 Use Python 3.10 ou superior e instale `ffmpeg` (inclui `ffprobe`). No Debian/Ubuntu:

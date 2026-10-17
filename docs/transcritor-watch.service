@@ -20,9 +20,12 @@ After=default.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/transcritor
-Environment=TRANSCRITOR_HOME=%h/transcritor
-ExecStart=%h/transcritor/bin/transcrever watch
+# Instalação normal (pipx/uv): o executável fica em ~/.local/bin. Se você
+# instalou a partir do repositório com ambiente virtual, use o lançador do
+# projeto e aponte a home de dados:
+#   Environment=TRANSCRITOR_HOME=%h/transcritor
+#   ExecStart=%h/transcritor/bin/transcrever watch
+ExecStart=%h/.local/bin/transcrever watch
 Restart=on-failure
 RestartSec=10
 # deixa o processo em prioridade menor para não travar a máquina

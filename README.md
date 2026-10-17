@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/faster--whisper-large--v3-orange.svg" alt="faster-whisper large-v3">
 </p>
 
-O **transcritor** é uma ferramenta open source para transformar reuniões, entrevistas, aulas e mensagens de voz em texto e legendas sem enviar gravações para serviços externos. Usa faster-whisper e CTranslate2, por padrão em CPU com `int8` e modelo `large-v3`, com prompt inicial voltado à pontuação em PT-BR. Depois de instalar as dependências e baixar o modelo escolhido, a transcrição funciona inteiramente offline, sem chave de API. Versão **1.0.0**, por [Frederico Carlos (@a32fred)](https://github.com/a32fred).
+O **transcritor** é uma ferramenta open source para transformar reuniões, entrevistas, aulas e mensagens de voz em texto e legendas sem enviar gravações para serviços externos. Usa faster-whisper e CTranslate2, por padrão em CPU com `int8` e modelo `large-v3`, com prompt inicial voltado à pontuação em PT-BR. Depois de instalar as dependências e baixar o modelo escolhido, a transcrição funciona inteiramente offline, sem chave de API. Versão **1.1.0**, por [Frederico Carlos (@a32fred)](https://github.com/a32fred).
 
 ## Sumário
 
@@ -30,10 +30,12 @@ O **transcritor** é uma ferramenta open source para transformar reuniões, entr
   - [detect](#detect)
   - [watch](#watch)
   - [serve](#serve)
+  - [abrir](#abrir)
   - [tui](#tui)
   - [jobs](#jobs)
   - [models](#models)
   - [config](#config)
+  - [desktop](#desktop)
   - [doctor](#doctor)
   - [info](#info)
 - [Formatos suportados](#formatos-suportados)
@@ -77,6 +79,7 @@ A interface web tem tema escuro, envio de múltiplos arquivos por arrastar-e-sol
 | Idiomas e tradução | Detecção de idioma e tradução da fala para inglês com a tarefa `translate`. |
 | Progresso | Percentual, prévia, velocidade e estimativa de tempo quando há duração disponível; web usa SSE. |
 | Modelos alternativos | Download, consulta e seleção de modelos menores ou `large-v3-turbo`. |
+| Instalação guiada | Instalador de uma linha (FFmpeg, `pipx`, ícone no menu, “Abrir com” e modelo com progresso), menu interativo ao digitar `transcrever` e download do modelo pela própria interface web. |
 
 > **Histórico:** `transcrever transcribe` é avulso e não cria jobs. Para histórico persistente, use `watch`, `serve` ou `tui`.
 
@@ -84,110 +87,146 @@ A interface web tem tema escuro, envio de múltiplos arquivos por arrastar-e-sol
 
 ### Requisitos
 
-- **Python 3.10 ou superior** e suporte a ambientes virtuais.
-- **FFmpeg e ffprobe** no `PATH`, com codecs compatíveis com seus arquivos. O ffprobe é necessário mesmo com `--no-preprocess`.
-- Espaço para dependências, modelo, saídas e áudio temporário. O `large-v3` ocupa aproximadamente **2,9 GB em disco**.
-- RAM disponível para o modelo. O diagnóstico usa cerca de **2,5 GB livres** como referência para modelos `large`; isso não é garantia de consumo máximo.
-- Internet para instalar dependências e baixar cada modelo; depois disso, não é necessária para transcrever.
+- **Python 3.10 ou superior** e **FFmpeg com ffprobe** no `PATH`. O `ffprobe` é necessário mesmo com `--no-preprocess`.
+- Espaço em disco para o modelo: de **484 MB** (`small`) a **3,1 GB** (`large-v3`). As transcrições ocupam bem menos que o áudio.
+- RAM para carregar o modelo. O diagnóstico usa cerca de **2,5 GB livres** como referência para os modelos `large`; isso não é garantia de consumo máximo.
+- Internet para instalar e para baixar o modelo. Depois disso, **a transcrição funciona sem rede**: nenhum áudio sai do seu computador.
 
-Os exemplos usam Bash em Linux/macOS. A TUI requer um terminal interativo com curses; o serviço systemd é específico de Linux.
+O instalador cuida do Python, do FFmpeg e das dependências. A TUI exige um terminal interativo com curses; o serviço systemd é específico de Linux.
 
-### Instalar FFmpeg
-
-Execute apenas o bloco correspondente ao seu sistema:
+### Instalação em um comando
 
 ```bash
-# Fedora: o pacote completo pode exigir um repositório como RPM Fusion
-sudo dnf install ffmpeg
+curl -fsSL https://raw.githubusercontent.com/a32fred/transcritor/main/instalar.sh | bash
 ```
 
+O instalador faz, na ordem:
+
+1. descobre a sua distribuição e instala o que falta — **FFmpeg**, Python e `pipx` —, pedindo a sua senha para usar `sudo`;
+2. instala o transcritor **isolado, com `pipx`**: sem ambiente virtual manual, sem link simbólico, sem variável de ambiente e sem editar arquivos do seu shell;
+3. cria o **ícone no menu** e a opção **“Abrir com o transcritor”** para arquivos de áudio e vídeo;
+4. mostra os modelos com tamanho e qualidade e baixa o que você escolher (uma vez só);
+5. roda o diagnóstico e resume como usar.
+
+| Opção | Efeito |
+| --- | --- |
+| `--sem-modelo` | instala sem baixar o modelo agora |
+| `--modelo NOME` | escolhe o modelo: `small`, `medium`, `large-v3-turbo` ou `large-v3` |
+| `--sem-icone` | não cria o ícone do menu nem o “Abrir com” |
+| `--sim` | não pergunta nada |
+| `--versao REF` | instala um ramo ou etiqueta específicos (padrão: `main`) |
+| `--dry-run` | apenas mostra o que seria feito |
+
+Executar de novo é seguro: ele atualiza a instalação existente.
+
+### Três jeitos de usar, sem decorar comando
+
+| Jeito | Como |
+| --- | --- |
+| **Pelo navegador** | procure **transcritor** no menu do sistema e clique: abre a interface local, onde você arrasta os arquivos e lê o resultado |
+| **Direto no arquivo** | clique com o botão direito em um áudio e escolha **Abrir com → Transcrever com o transcritor**: o arquivo entra na fila e o navegador abre com o progresso |
+| **Pelo terminal** | digite `transcrever` e responda o menu numerado |
+
+A interface no navegador é completa: upload por arrastar e soltar, progresso ao vivo, player sincronizado com a transcrição e botões para baixar `.txt`, `.srt`, `.vtt`, `.json` e `.md`. Se o modelo ainda não estiver no computador, **a própria página oferece o download**, com o tamanho e o progresso.
+
+### Outras formas de instalar
+
+Com `pipx`, direto do repositório — o mesmo que o instalador usa:
+
 ```bash
-# Debian / Ubuntu
-sudo apt update
-sudo apt install python3 python3-venv python3-pip ffmpeg
+pipx install git+https://github.com/a32fred/transcritor
 ```
 
+Com [`uv`](https://docs.astral.sh/uv/):
+
 ```bash
-# Arch Linux
-sudo pacman -S python python-pip ffmpeg
+uv tool install git+https://github.com/a32fred/transcritor
 ```
 
-```bash
-# macOS, com Homebrew
-brew install python ffmpeg
-```
-
-Confirme que **os dois executáveis** estão disponíveis:
+Manual, em um ambiente virtual — o caminho de quem vai mexer no código (veja [CONTRIBUTING.md](CONTRIBUTING.md)):
 
 ```bash
-ffmpeg -version
-ffprobe -version
-```
-
-### Preparar o projeto e o ambiente virtual
-
-Obtenha o código em [github.com/a32fred/transcritor](https://github.com/a32fred/transcritor), extraia-o em `~/transcritor` e execute:
-
-```bash
-cd ~/transcritor
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+git clone https://github.com/a32fred/transcritor
+cd transcritor
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-```
-
-As dependências incluem `faster-whisper`, `ctranslate2`, `huggingface_hub`, `jinja2`, `click`, `numpy` e `av`. A instalação editável disponibiliza o comando **`transcritor`** no ambiente virtual.
-
-### Instalar o comando `transcrever`
-
-O nome em português é oferecido pelo lançador `bin/transcrever`. Para chamá-lo de qualquer pasta:
-
-```bash
-cd ~/transcritor
-chmod +x bin/transcrever
-mkdir -p ~/.local/bin
-ln -s "$PWD/bin/transcrever" ~/.local/bin/transcrever
-export PATH="$HOME/.local/bin:$PATH"
-export TRANSCRITOR_PYTHON="$PWD/.venv/bin/python"
 transcrever --version
 ```
 
-Se o link já existir, confira seu destino antes de alterá-lo. Adicione os dois `export` ao arquivo de inicialização do seu shell para persistir a configuração. `TRANSCRITOR_PYTHON` informa ao lançador qual Python usar; alternativamente, mantenha o ambiente virtual ativado. Não é necessário um link para executar `./bin/transcrever` diretamente.
-
-O lançador define `TRANSCRITOR_HOME` como a raiz do projeto, salvo se a variável já estiver definida. O comando instalado `transcritor` usa `~/transcritor` por padrão; para manter os mesmos dados em outra localização, defina `TRANSCRITOR_HOME` explicitamente.
-
-### Baixar o modelo
+Instale o FFmpeg antes, conforme a sua distribuição:
 
 ```bash
-transcrever models download large-v3
-transcrever doctor
+sudo dnf install ffmpeg     # Fedora (o pacote completo exige o RPM Fusion; ffmpeg-free atende à maioria dos formatos)
+sudo apt install ffmpeg     # Debian / Ubuntu
+sudo pacman -S ffmpeg       # Arch Linux
+brew install ffmpeg         # macOS, com Homebrew
 ```
 
-O modelo fica em `models/faster-whisper-large-v3` dentro de `TRANSCRITOR_HOME`. O download é feito pelo Hugging Face; uma vez disponível localmente, o motor o abre sem buscar arquivos na rede. Escolher um modelo ainda não baixado pode iniciar um novo download.
+### Onde ficam os meus arquivos
+
+Programa e dados ficam em lugares separados:
+
+| O quê | Onde |
+| --- | --- |
+| Transcrições prontas | `~/.local/share/transcritor/var/outbox/<nome-do-áudio>/` |
+| Fila de entrada | `~/.local/share/transcritor/var/inbox/` |
+| Modelos baixados | `~/.local/share/transcritor/models/` |
+| Configuração | `~/.local/share/transcritor/config.json` |
+| Histórico e registro | `~/.local/share/transcritor/var/state.json` e `transcritor.log` |
+
+O endereço segue o padrão XDG (`$XDG_DATA_HOME`, quando definido). Quem já tem dados no layout antigo (`~/transcritor/var`, `~/transcritor/models` ou `~/transcritor/config.json`) continua usando `~/transcritor` — nada é movido nem perdido. Para escolher outro lugar, defina `TRANSCRITOR_HOME`; `transcrever info` mostra os caminhos em uso.
+
+### Atualizar e desinstalar
+
+```bash
+pipx upgrade transcritor      # atualizar
+pipx uninstall transcritor    # desinstalar o programa
+```
+
+A desinstalação **não apaga os seus dados**: modelos, fila e transcrições continuam em `~/.local/share/transcritor` (ou `~/transcritor`). Apague a pasta quando quiser removê-los. O ícone do menu sai com `transcrever desktop remover`.
+
+### O modelo
+
+O transcritor precisa de um modelo Whisper. Ele é baixado **uma única vez** e passa a ficar no seu computador. Se você transcrever sem ele, o programa informa o tamanho e pede confirmação — nada é baixado em silêncio.
+
+| Modelo | Tamanho | Qualidade |
+| --- | --- | --- |
+| `small` | ~484 MB | boa — o mais leve, para computador simples ou internet lenta |
+| `medium` | ~1,5 GB | muito boa |
+| `large-v3-turbo` | ~1,6 GB | excelente e rápido — o melhor custo-benefício |
+| `large-v3` | ~3,1 GB | máxima qualidade, mais lento |
+
+```bash
+transcrever models list                     # o que já está baixado
+transcrever models download medium          # baixar outro modelo
+transcrever models download medium --usar   # baixar e tornar padrão
+```
+
+O download é retomável: se a conexão cair no meio, rode o mesmo comando de novo e ele continua de onde parou.
 
 ## Início rápido
 
-Depois de instalar FFmpeg e obter o código, o caminho mínimo é:
-
 ```bash
-cd ~/transcritor
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-./bin/transcrever models download large-v3
-./bin/transcrever transcribe /caminho/para/reuniao.mp3
-cat var/outbox/reuniao/transcricao.txt
+curl -fsSL https://raw.githubusercontent.com/a32fred/transcritor/main/instalar.sh | bash
 ```
 
-Por padrão, também serão gerados `transcricao.srt`, `transcricao.vtt`, `transcricao.json` e `transcricao.md` na mesma pasta. Em caso de colisão de nomes, consulte o diretório informado ao final da execução.
+Terminado o instalador, digite apenas `transcrever`: o menu mostra as opções, e a primeira pergunta — o modelo — já vem com tamanho e tempo de download.
 
-Prefere não usar a linha de comando para escolher os arquivos?
+Pelo caminho de linha de comando:
 
 ```bash
-transcrever serve --open
+transcrever transcribe /caminho/para/reuniao.mp3
+cat ~/.local/share/transcritor/var/outbox/reuniao/transcricao.txt
 ```
 
-Abra ou acesse `http://127.0.0.1:8765/`, envie um arquivo e selecione o job concluído para ler ou baixar a transcrição.
+Sem passar pelo terminal na hora de escolher o arquivo:
+
+```bash
+transcrever abrir /caminho/para/reuniao.mp3   # enfileira e abre o navegador
+transcrever serve --open                      # abre a interface; arraste os arquivos para ela
+```
+
+Por padrão, também são gerados `transcricao.srt`, `transcricao.vtt`, `transcricao.json` e `transcricao.md` na mesma pasta. Em caso de colisão de nomes, o caminho final é informado ao término da execução.
 
 ## Uso
 
@@ -295,6 +334,20 @@ Opções: `--host`, `-p/--port`, `--open`, `--no-watch`, `-m/--model` e `-f/--fo
 
 > **Segurança:** o servidor não implementa autenticação nem TLS e permite adicionar caminhos locais e acessar arquivos dos jobs. Mantenha `127.0.0.1`; expor a interface em outro endereço exige proteção externa e uma rede confiável. “Local” não significa seguro para publicar na internet.
 
+### abrir
+
+Coloca arquivos ou pastas na fila e abre a interface no navegador. É o comando usado pelo ícone do menu e pela opção **“Abrir com o transcritor”** — pensado para quem não vai digitar caminhos dentro de um terminal.
+
+```bash
+transcrever abrir                                  # só abre a interface
+transcrever abrir reuniao.mp3                      # enfileira e abre
+transcrever abrir ~/Downloads/audios/ --sem-navegador
+```
+
+Se o servidor ainda não estiver no ar, ele sobe sozinho em segundo plano e o terminal fica livre. Os arquivos **não são copiados**: o programa lê o original e escreve o resultado na pasta de saída. Arquivos que não são áudio ou vídeo são ignorados com um aviso, e pastas são percorridas em busca de mídia.
+
+Opções: `--host`, `-p/--port` e `--sem-navegador`.
+
 ### tui
 
 Abre o painel curses no terminal, com fila, progresso e visualização de transcrições. Também inicia o watcher por padrão.
@@ -380,6 +433,18 @@ transcrever info
 ```
 
 Mostra versão, caminhos efetivos, modelo, dispositivo, threads, idioma, tarefa, formatos, contagem de jobs e endereço web configurado. Não inicia o servidor.
+
+### desktop
+
+Instala ou remove o ícone no menu do sistema e a opção **“Abrir com o transcritor”** para arquivos de áudio e vídeo (Linux, em `~/.local/share/applications` e `~/.local/share/icons`).
+
+```bash
+transcrever desktop instalar    # ícone no menu + "Abrir com"
+transcrever desktop status      # mostra o que já existe e para onde aponta
+transcrever desktop remover     # desfaz o que o instalar criou
+```
+
+Os arquivos `.desktop` apontam para o executável `transcrever` encontrado no `PATH`, então atualizar o programa não exige refazer nada.
 
 ## Formatos suportados
 
@@ -470,7 +535,7 @@ transcrever config set device=cpu compute_type=int8
 
 Sem opções específicas de comando, a precedência é **variáveis de ambiente > `config.json` > padrões do código**. As opções de comando implementadas como substituições são aplicadas depois da carga e prevalecem naquela execução.
 
-O arquivo padrão é `$TRANSCRITOR_HOME/config.json`, ou `~/transcritor/config.json`. `--config ARQUIVO` escolhe outro JSON e os comandos que salvam configuração escrevem nesse mesmo caminho. Consulte [config.example.json](config.example.json) para um exemplo inicial; `config show --json` mostra todos os campos efetivos.
+O arquivo padrão é `~/.local/share/transcritor/config.json` (`$XDG_DATA_HOME/transcritor/config.json`, quando definido) — ou `~/transcritor/config.json` para quem vem do layout antigo. `--config ARQUIVO` escolhe outro JSON e os comandos que salvam configuração escrevem nesse mesmo caminho. Consulte [config.example.json](config.example.json) para um exemplo inicial; `config show --json` mostra todos os campos efetivos.
 
 ### Caminhos
 
@@ -478,7 +543,7 @@ Os caminhos relativos à home abaixo são derivados quando o respectivo campo n�
 
 | Campo | Padrão | Finalidade |
 | --- | --- | --- |
-| `home` | `~/transcritor` | Diretório base; o lançador usa a raiz do projeto se `TRANSCRITOR_HOME` não estiver definido. |
+| `home` | `~/.local/share/transcritor` | Diretório base dos dados; `TRANSCRITOR_HOME` tem precedência e o layout antigo (`~/transcritor`) é respeitado. |
 | `inbox` | `home/var/inbox` | Entrada do watcher e destino dos uploads. |
 | `outbox` | `home/var/outbox` | Artefatos gerados. |
 | `work` | `home/var/work` | Arquivos temporários. |
@@ -598,25 +663,28 @@ Exemplo de configuração parcial válida:
 
 ## Execução automática (systemd)
 
-O projeto inclui um serviço **de usuário** em [docs/transcritor-watch.service](docs/transcritor-watch.service). Ele pressupõe a instalação em `~/transcritor`, usa o lançador `bin/transcrever`, reinicia após falhas e reduz a prioridade de CPU/E/S.
+O projeto inclui um serviço **de usuário** em [docs/transcritor-watch.service](docs/transcritor-watch.service). Ele usa o executável `transcrever` instalado no `~/.local/bin` (pipx/uv), reinicia após falhas e reduz a prioridade de CPU/E/S.
 
 ```bash
-cd ~/transcritor
 mkdir -p ~/.config/systemd/user
-cp docs/transcritor-watch.service ~/.config/systemd/user/
+curl -fsSL https://raw.githubusercontent.com/a32fred/transcritor/main/docs/transcritor-watch.service \
+  -o ~/.config/systemd/user/transcritor-watch.service
+systemctl --user daemon-reload
+systemctl --user enable --now transcritor-watch
 ```
 
-Antes de iniciar, ajuste os caminhos se necessário. Se as dependências estiverem no ambiente virtual, configure o interpretador por um override:
+(Quem tem o repositório clonado pode copiar de `docs/transcritor-watch.service`.)
+
+Se você instalou a partir do repositório, com ambiente virtual, use um override apontando para o lançador do projeto:
 
 ```bash
 systemctl --user edit transcritor-watch
 ```
 
-Inclua, substituindo o caminho pelo caminho absoluto da sua instalação:
-
 ```ini
 [Service]
-Environment=TRANSCRITOR_PYTHON=/home/SEU_USUARIO/transcritor/.venv/bin/python
+Environment=TRANSCRITOR_HOME=%h/transcritor
+ExecStart=%h/transcritor/bin/transcrever watch
 ```
 
 Depois:
@@ -653,6 +721,7 @@ Disponível enquanto `transcrever serve` estiver ativo. A tabela reproduz as rot
 | `GET` | `/api/download/{id}/{fmt}` | Baixa um formato gerado para o job. |
 | `GET` | `/api/audio/{id}` | Serve o arquivo original com suporte a `Range`. |
 | `GET` | `/api/models` | Modelos conhecidos, disponibilidade local e modelo ativo. |
+| `POST` | `/api/models/download` | Baixa o modelo ativo (ou o informado em `{"name": "..."}`), com progresso em `/api/status` e nos eventos. Responde `409` se já houver download em andamento. |
 | `GET` | `/api/events` | Progresso e eventos por Server-Sent Events. |
 | `POST` | `/api/scan` | Rota auxiliar: solicita uma varredura do watcher; sem watcher, retorna zero. |
 | `GET` | `/favicon.ico` | Rota auxiliar: responde sem conteúdo (`204`). |
@@ -741,7 +810,7 @@ transcrever transcribe "WhatsApp Audio 2026-07-10 at 10.51.19.ogg"
 
 **Traduz para português?** Não pela tarefa de tradução do Whisper: `-t translate` produz inglês. `transcribe` mantém o idioma da fala.
 
-**Onde ficam os arquivos?** Por padrão, em `~/transcritor/var/outbox/<nome>/`. O lançador e `TRANSCRITOR_HOME` podem mudar a base; `info` mostra os caminhos efetivos.
+**Onde ficam os arquivos?** Por padrão, em `~/.local/share/transcritor/var/outbox/<nome>/`. `TRANSCRITOR_HOME` pode mudar a base, e quem tem o layout antigo continua em `~/transcritor`; `info` mostra os caminhos efetivos.
 
 **Por que `jobs list` não mostra minha transcrição?** `transcribe` não cria jobs. Use `watch`, `serve` ou `tui` para persistir o histórico.
 
