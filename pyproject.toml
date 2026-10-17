@@ -55,7 +55,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=7.4",
-  "ruff>=0.6",
+  # mesma versão usada no CI: o lint precisa ser reprodutível
+  "ruff==0.17.1",
 ]
 
 [project.urls]
@@ -102,11 +103,15 @@ select = [
   "N",    # pep8-naming
   "UP",   # modernizações de sintaxe
   "B",    # bugbear
-  "BLE",  # captura de exceção ampla
   "C4",   # compreensões
   "SIM",  # simplificações
   "RUF",  # regras próprias do ruff
 ]
+# `BLE` (captura ampla de exceção) fica de fora de propósito: o projeto captura
+# `Exception` em vários pontos deliberados (um callback de progresso que falha
+# não pode derrubar a transcrição, por exemplo) e todos registram o erro. A
+# regra também mudou de comportamento entre versões do ruff, o que tornava o
+# `# noqa` intermitente. Não há diretivas `noqa` para ela no código.
 ignore = [
   # O comprimento das linhas é responsabilidade do formatador, não do lint.
   "E501",

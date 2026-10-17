@@ -7,23 +7,24 @@
     Conceito: som que vira texto, sem sair da máquina.
     À esquerda, uma forma de onda em decaimento (o áudio).
     À direita, as linhas do texto transcrito.
-    No fim da última linha, o cursor do terminal: é onde o texto é lido.
+    No fim da última linha, o cursor do terminal: onde o texto é lido.
 
-    Cores (tema claro, para uso sobre fundo branco):
-      tinta    #0e1116  (cor de fundo do produto, invertida)
-      cursor   #0a6f9e  (accent #4cc2ff escurecido para contraste em fundo claro)
-    A marca funciona em monocromia: a leitura depende só da silhueta das formas.
+    Cores (tema claro, para uso sobre fundo branco ou claro):
+      tinta  #0e1116  (cor de fundo do produto, invertida)
+      cursor #0a6f9e  (accent #4cc2ff escurecido para contraste em fundo claro)
+    Funciona em monocromia: a leitura depende só da silhueta das formas.
+    Fundo transparente, vetorial, sem raster e sem image.
   -->
   <g fill="#0e1116">
     <!-- forma de onda em decaimento -->
-    <rect x="1.5" y="5" width="3.1" height="22" rx="1.55"/>
-    <rect x="6.5" y="8.5" width="3.1" height="15" rx="1.55"/>
-    <rect x="11.5" y="11" width="3.1" height="10" rx="1.55"/>
+    <rect x="1.4" y="4.5" width="2.9" height="23" rx="1.45"/>
+    <rect x="6.6" y="8" width="2.9" height="16" rx="1.45"/>
+    <rect x="11.8" y="10.75" width="2.9" height="10.5" rx="1.45"/>
     <!-- linhas do texto transcrito -->
-    <rect x="17.8" y="7.4" width="12.7" height="3.2" rx="1.6"/>
-    <rect x="17.8" y="13.8" width="12.7" height="3.2" rx="1.6"/>
-    <rect x="17.8" y="20.2" width="6.5" height="3.2" rx="1.6"/>
+    <rect x="17.6" y="7.2" width="12.9" height="3.2" rx="1.6"/>
+    <rect x="17.6" y="14.4" width="12.9" height="3.2" rx="1.6"/>
+    <rect x="17.6" y="21.6" width="6.6" height="3.2" rx="1.6"/>
   </g>
   <!-- cursor do terminal (ponto de inserção) -->
-  <rect x="26.6" y="18.9" width="3.4" height="5.8" rx="1" fill="#0a6f9e"/>
+  <rect x="26.8" y="19.5" width="3.6" height="7.4" rx="1" fill="#0a6f9e"/>
 </svg>

@@ -38,7 +38,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest ruff
+          # `ruff` fica fixado: o resultado do lint muda entre versões, e uma
+          # regra alterada em silêncio quebraria o CI sem mudança no código.
+          pip install pytest "ruff==0.17.1"
       - name: Verificar código e testes com Ruff
         continue-on-error: false
         run: ruff check transcritor tests

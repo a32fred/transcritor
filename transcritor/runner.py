@@ -64,7 +64,7 @@ class Runner:
         if self.on_event:
             try:
                 self.on_event(event, data)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.debug("on_event falhou", exc_info=True)
 
     # ------------------------------------------------------------------
@@ -79,7 +79,7 @@ class Runner:
                 try:
                     t = self.engine.warmup()
                     self.emit("engine_ready", seconds=round(t, 2), model=self.cfg.model)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     log.error("falha ao carregar o modelo: %s", exc)
                     self.emit("engine_error", error=str(exc))
             threading.Thread(target=_warm, name="warmup", daemon=True).start()
@@ -213,7 +213,7 @@ class Runner:
             if self.cfg.watch_delete_source and job.origin == "watch":
                 with contextlib.suppress(OSError):
                     source.unlink()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             status = "canceled" if cancel.is_set() else "error"
             log.error("job %s falhou: %s", job_id, exc)
             self.store.update(job_id, status=status, finished=time.time(),

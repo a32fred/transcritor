@@ -120,7 +120,7 @@ class Pipeline:
             try:
                 normalize(source, wav, loudnorm=loudnorm)
                 audio_in = wav
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.warning("ffmpeg falhou (%s); usando o arquivo original", exc)
                 audio_in = source
                 emit("normalize_failed", error=str(exc))

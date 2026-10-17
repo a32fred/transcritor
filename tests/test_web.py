@@ -445,7 +445,7 @@ def test_eventos_notifica_upload(base, web, audio_file):
                     if b"evento.wav" in buffer:
                         recebido.append(buffer)
                         return
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     t = threading.Thread(target=consome, daemon=True)

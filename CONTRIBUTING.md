@@ -14,11 +14,15 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
-pip install pytest ruff
+pip install pytest "ruff==0.17.1"
 ```
 
 No Windows, ative com `.venv\Scripts\activate` e instale o ffmpeg pelo gerenciador de sua preferência,
 garantindo que `ffmpeg` e `ffprobe` estejam no `PATH`.
+
+A versão do `ruff` é fixada de propósito: o conjunto de regras e o comportamento de algumas delas
+mudam entre versões, e o CI usa exatamente esta. Ao atualizar a versão, faça isso em um commit
+próprio, com o CI verde, e ajuste `.github/workflows/ci.yml` e `pyproject.toml` juntos.
 
 O comando instalado é `transcritor`; o projeto também fornece `bin/transcrever`.
 Para usar os exemplos com esse nome no Linux/macOS, execute na raiz:

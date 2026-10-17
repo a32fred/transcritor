@@ -206,7 +206,7 @@ def cmd_transcribe(ctx: click.Context, paths: tuple[Path, ...], outdir: Path | N
                 preprocess=not no_preprocess,
                 loudnorm=loudnorm,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             click.echo(click.style(f"  falhou: {exc}", fg="red"))
             rcs[str(target)] = 1
             continue
@@ -458,7 +458,7 @@ def cmd_detect(ctx: click.Context, paths: tuple[Path, ...]) -> None:
     for t in targets:
         try:
             lang, prob = engine.detect_language(t)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             click.echo(f"{t.name:<40} " + click.style(f"falhou: {exc}", fg="red"))
             continue
         click.echo(f"{t.name:<40} " + click.style(f"{lang}", fg="cyan", bold=True)
