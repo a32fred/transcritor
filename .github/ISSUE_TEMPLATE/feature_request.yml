@@ -1,0 +1,32 @@
+name: Sugestão de funcionalidade
+description: Proponha uma melhoria para o transcritor.
+title: "[Sugestão]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema que motiva o pedido
+      description: Descreva a necessidade e quem se beneficiaria.
+    validations: { required: true }
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solução proposta
+      description: Explique o comportamento desejado e como preservar o uso local/offline.
+    validations: { required: true }
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+      description: Inclua soluções atuais ou explique por que não há alternativa adequada.
+    validations: { required: true }
+  - type: dropdown
+    id: implementation
+    attributes:
+      label: Você pretende implementar esta melhoria?
+      options:
+        - "Sim, pretendo enviar um PR"
+        - "Talvez, com orientação"
+        - "Não no momento"
+    validations: { required: true }

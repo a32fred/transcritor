@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" role="img" aria-labelledby="markTitle markDesc">
+  <title id="markTitle">transcritor</title>
+  <desc id="markDesc">Símbolo do transcritor: uma forma de onda que decresce e se transforma em linhas de texto, terminando em um cursor de terminal.</desc>
+
+  <!--
+    transcritor — símbolo
+    Conceito: som que vira texto, sem sair da máquina.
+    À esquerda, uma forma de onda em decaimento (o áudio).
+    À direita, as linhas do texto transcrito.
+    No fim da última linha, o cursor do terminal: é onde o texto é lido.
+
+    Cores (tema claro, para uso sobre fundo branco):
+      tinta    #0e1116  (cor de fundo do produto, invertida)
+      cursor   #0a6f9e  (accent #4cc2ff escurecido para contraste em fundo claro)
+    A marca funciona em monocromia: a leitura depende só da silhueta das formas.
+  -->
+  <g fill="#0e1116">
+    <!-- forma de onda em decaimento -->
+    <rect x="1.5" y="5" width="3.1" height="22" rx="1.55"/>
+    <rect x="6.5" y="8.5" width="3.1" height="15" rx="1.55"/>
+    <rect x="11.5" y="11" width="3.1" height="10" rx="1.55"/>
+    <!-- linhas do texto transcrito -->
+    <rect x="17.8" y="7.4" width="12.7" height="3.2" rx="1.6"/>
+    <rect x="17.8" y="13.8" width="12.7" height="3.2" rx="1.6"/>
+    <rect x="17.8" y="20.2" width="6.5" height="3.2" rx="1.6"/>
+  </g>
+  <!-- cursor do terminal (ponto de inserção) -->
+  <rect x="26.6" y="18.9" width="3.4" height="5.8" rx="1" fill="#0a6f9e"/>
+</svg>

@@ -1,0 +1,33 @@
+# Serviço de usuário do systemd para a pasta vigiada do transcritor.
+#
+# Instalar:
+#   mkdir -p ~/.config/systemd/user
+#   cp docs/transcritor-watch.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now transcritor-watch
+#
+# Acompanhar:
+#   systemctl --user status transcritor-watch
+#   journalctl --user -u transcritor-watch -f
+#
+# Observação: o modelo large-v3 em CPU é pesado. Se a máquina for usada para
+# outras tarefas, considere reduzir watch_workers (já é 1 por padrão) ou trocar
+# para large-v3-turbo.
+
+[Unit]
+Description=Transcritor — pasta vigiada de áudio (faster-whisper)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/transcritor
+Environment=TRANSCRITOR_HOME=%h/transcritor
+ExecStart=%h/transcritor/bin/transcrever watch
+Restart=on-failure
+RestartSec=10
+# deixa o processo em prioridade menor para não travar a máquina
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentação e solução de problemas
+    url: https://github.com/a32fred/transcritor#solução-de-problemas
+    about: Consulte a documentação antes de abrir um relato.
+  - name: Relatar vulnerabilidade em particular
+    url: https://github.com/a32fred/transcritor/blob/main/SECURITY.md
+    about: Siga a política de segurança; não publique detalhes da vulnerabilidade em uma issue.

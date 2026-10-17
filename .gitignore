@@ -1,0 +1,37 @@
+# Dados locais: nunca versionar áudio, saídas nem histórico
+var/
+models/
+config.json
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.python
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Empacotamento
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Ferramentas de teste e lint
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Editores e sistema
+.idea/
+.vscode/
+*.swp
+.DS_Store

@@ -1,0 +1,123 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "transcritor"
+version = "1.0.0"
+description = "Transcrição local de áudio em PT-BR com faster-whisper (100% offline)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Frederico Carlos", email = "fredericocarlos.a32@gmail.com" },
+]
+keywords = [
+  "whisper",
+  "faster-whisper",
+  "ctranslate2",
+  "transcricao",
+  "pt-br",
+  "portugues",
+  "offline",
+  "privacidade",
+  "speech-to-text",
+  "legendas",
+  "srt",
+  "vtt",
+  "audio",
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Natural Language :: Portuguese (Brazilian)",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+  "Topic :: Text Processing",
+]
+dependencies = [
+  "faster-whisper>=1.1.0",
+  "ctranslate2>=4.5.0",
+  "huggingface_hub>=0.24.0",
+  "jinja2>=3.1.0",
+  "click>=8.1.0",
+  "numpy>=1.24.0",
+  "av>=12.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4",
+  "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/a32fred/transcritor"
+Repository = "https://github.com/a32fred/transcritor"
+Issues = "https://github.com/a32fred/transcritor/issues"
+Changelog = "https://github.com/a32fred/transcritor/blob/main/CHANGELOG.md"
+
+[project.scripts]
+transcritor = "transcritor.cli:main"
+transcrever = "transcritor.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["transcritor*"]
+
+[tool.setuptools.package-data]
+"transcritor.web" = ["templates/*.html"]
+
+# ---------------------------------------------------------------------------
+# Testes
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "7.4"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+norecursedirs = ["var", "models", ".git", ".venv"]
+# Permite rodar `pytest` sem antes instalar o pacote (`pip install -e .`).
+pythonpath = ["."]
+
+# ---------------------------------------------------------------------------
+# Lint / formatação
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["var", "models", ".venv"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle (erros)
+  "F",    # pyflakes
+  "W",    # pycodestyle (avisos)
+  "I",    # ordenação de imports
+  "N",    # pep8-naming
+  "UP",   # modernizações de sintaxe
+  "B",    # bugbear
+  "BLE",  # captura de exceção ampla
+  "C4",   # compreensões
+  "SIM",  # simplificações
+  "RUF",  # regras próprias do ruff
+]
+ignore = [
+  # O comprimento das linhas é responsabilidade do formatador, não do lint.
+  "E501",
+  # Acentos e aspas tipográficas nas mensagens em português são intencionais.
+  "RUF001",
+  "RUF002",
+  "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Nos testes, nomes descritivos longos e dublês de interface são esperados.
+# RUF059: desempacotar a fixture inteira (cfg, store, runner, w) e usar só
+# parte é mais legível do que indexar a tupla.
+"tests/*" = ["N802", "N803", "N806", "RUF059"]

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="246" height="48" viewBox="0 0 246 48" role="img" aria-labelledby="logoEscuroTitle logoEscuroDesc">
+  <title id="logoEscuroTitle">transcritor</title>
+  <desc id="logoEscuroDesc">Logotipo do transcritor em cores claras: uma forma de onda que decresce até virar linhas de texto, seguida da palavra transcritor em minúsculas monoespaçadas.</desc>
+
+  <!--
+    transcritor — logotipo horizontal, tema escuro (uso sobre fundo escuro, ex.: README no tema escuro)
+    Forma de onda e texto #e6edf3 (fg)
+    Cursor #4cc2ff (accent)
+    Fundo transparente, vetorial, sem raster e sem image.
+  -->
+  <g transform="translate(2 0) scale(1.5)">
+    <g fill="#e6edf3">
+      <rect x="1.5" y="5" width="3.1" height="22" rx="1.55"/>
+      <rect x="6.5" y="8.5" width="3.1" height="15" rx="1.55"/>
+      <rect x="11.5" y="11" width="3.1" height="10" rx="1.55"/>
+      <rect x="17.8" y="7.4" width="12.7" height="3.2" rx="1.6"/>
+      <rect x="17.8" y="13.8" width="12.7" height="3.2" rx="1.6"/>
+      <rect x="17.8" y="20.2" width="6.5" height="3.2" rx="1.6"/>
+    </g>
+    <rect x="26.6" y="18.9" width="3.4" height="5.8" rx="1" fill="#4cc2ff"/>
+  </g>
+
+  <text x="58" y="34.5" fill="#e6edf3"
+        font-family="&quot;DejaVu Sans Mono&quot;, &quot;Liberation Mono&quot;, Menlo, Consolas, monospace"
+        font-size="28" font-weight="700" textLength="186" lengthAdjust="spacingAndGlyphs">transcritor</text>
+</svg>

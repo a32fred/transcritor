@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.opus binary
+*.bin binary
+
+*.svg text eol=lf
+*.srt text eol=lf
+*.vtt text eol=lf
+*.json text eol=lf

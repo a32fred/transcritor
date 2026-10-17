@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>transcritor — {{ model }}</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #151a22; --panel2: #1b222c; --line: #263040;
+    --fg: #e6edf3; --dim: #8b98a9; --accent: #4cc2ff; --accent2: #7ee787;
+    --warn: #ffd166; --err: #ff6b6b; --ok: #7ee787;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(1200px 600px at 20% -10%, #172231 0%, var(--bg) 60%);
+    color: var(--fg);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--line);
+    background: rgba(14,17,22,.75); backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .logo { font-weight: 700; letter-spacing: .5px; font-size: 16px; }
+  .logo span { color: var(--accent); }
+  .pill {
+    font-family: var(--mono); font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--dim);
+    white-space: nowrap;
+  }
+  .pill b { color: var(--fg); font-weight: 600; }
+  .pill.ok { border-color: #245c3c; color: var(--ok); }
+  .pill.warn { border-color: #5c4a24; color: var(--warn); }
+  .spacer { flex: 1; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(420px, 1fr) minmax(380px, 1fr); gap: 0; min-height: 0; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .col { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .col + .col { border-left: 1px solid var(--line); }
+  .col-head {
+    padding: 10px 16px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px; background: var(--panel);
+  }
+  .col-head h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); }
+  .col-body { flex: 1; overflow: auto; padding: 12px 16px 40px; }
+
+  #drop {
+    margin: 14px 16px 4px; padding: 22px; border: 1.5px dashed var(--line); border-radius: 12px;
+    text-align: center; color: var(--dim); cursor: pointer; transition: .15s;
+    background: linear-gradient(180deg, rgba(76,194,255,.03), transparent);
+  }
+  #drop.hot { border-color: var(--accent); color: var(--accent); background: rgba(76,194,255,.08); }
+  #drop b { color: var(--fg); }
+  #drop small { display: block; margin-top: 6px; font-family: var(--mono); font-size: 11px; }
+
+  .job {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+    padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: .12s;
+  }
+  .job:hover { border-color: #3a4a60; background: var(--panel2); }
+  .job.sel { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(76,194,255,.3); }
+  .job-top { display: flex; align-items: center; gap: 8px; }
+  .job-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; padding: 2px 7px; border-radius: 999px; font-weight: 700; }
+  .s-queued { background: #2b2f3a; color: var(--dim); }
+  .s-running { background: rgba(76,194,255,.16); color: var(--accent); }
+  .s-done { background: rgba(126,231,135,.14); color: var(--ok); }
+  .s-error { background: rgba(255,107,107,.16); color: var(--err); }
+  .s-canceled { background: #2b2f3a; color: var(--dim); }
+  .job-meta { margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; color: var(--dim); }
+  .bar { height: 5px; border-radius: 3px; background: #202836; margin-top: 8px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .3s; }
+  .bar.indet > i { width: 35% !important; animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+  .preview { margin-top: 7px; font-size: 12px; color: var(--dim); font-style: italic;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .job-err { margin-top: 6px; font-size: 12px; color: var(--err); font-family: var(--mono); }
+  .job-actions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+  button {
+    font: inherit; font-size: 12px; padding: 5px 11px; border-radius: 7px; cursor: pointer;
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line); transition: .12s;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: rgba(76,194,255,.14); border-color: #2a5f80; color: var(--accent); }
+  button.danger:hover { border-color: var(--err); color: var(--err); }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input[type=search], select {
+    font: inherit; font-size: 12px; padding: 5px 9px; border-radius: 7px;
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+  }
+  .empty { color: var(--dim); text-align: center; padding: 40px 12px; }
+  .empty code { font-family: var(--mono); color: var(--accent); }
+
+  .viewer-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .viewer-head .name { font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  audio { width: 100%; margin-bottom: 12px; height: 34px; }
+  pre.transcript {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.75; white-space: pre-wrap;
+    word-break: break-word; margin: 0; color: #d7e2ee;
+  }
+  .seg-row { display: grid; grid-template-columns: 58px 1fr; gap: 10px; padding: 2px 0; border-radius: 6px; }
+  .seg-row:hover { background: rgba(76,194,255,.07); }
+  .seg-row.hot { background: rgba(76,194,255,.14); }
+  .ts {
+    font-family: var(--mono); font-size: 11px; color: var(--accent); cursor: pointer;
+    user-select: none; padding-top: 2px;
+  }
+  .ts:hover { text-decoration: underline; }
+  .log { font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
+  .log b { color: var(--accent2); font-weight: 600; }
+  .stats { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; color: var(--dim); margin-bottom: 10px; }
+  .stats span b { color: var(--fg); }
+  .tabs { display: flex; gap: 4px; }
+  .tabs button.active { border-color: var(--accent); color: var(--accent); background: rgba(76,194,255,.12); }
+  footer { padding: 8px 20px; border-top: 1px solid var(--line); color: var(--dim);
+           font-family: var(--mono); font-size: 11px; display: flex; gap: 16px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">transcritor<span>.</span></div>
+  <span class="pill">modelo <b>{{ model }}</b></span>
+  <span class="pill">{{ device }} · <b>{{ threads }}</b> threads</span>
+  <span class="pill">idioma <b>{{ language }}</b></span>
+  <span class="pill" id="pill-engine">motor —</span>
+  <span class="pill" id="pill-watch">vigília —</span>
+  <div class="spacer"></div>
+  <div class="toolbar">
+    <input type="search" id="filter" placeholder="filtrar…">
+    <select id="status-filter">
+      <option value="">todos</option>
+      <option value="queued">na fila</option>
+      <option value="running">processando</option>
+      <option value="done">concluídos</option>
+      <option value="error">erros</option>
+    </select>
+    <button id="btn-scan">reescanear pasta</button>
+    <button id="btn-clear">limpar finalizados</button>
+  </div>
+</header>
+
+<main>
+  <section class="col">
+    <div class="col-head">
+      <h2>Fila de transcrição</h2>
+      <div class="spacer"></div>
+      <span class="pill" id="pill-counts">—</span>
+    </div>
+    <div id="drop" onclick="document.getElementById('file').click()">
+      <b>Arraste áudios ou vídeos aqui</b> — ou clique para escolher
+      <small>mp3 · wav · m4a · flac · ogg · opus · mp4 · mkv · mov · webm · …</small>
+      <input type="file" id="file" multiple accept="audio/*,video/*" style="display:none">
+    </div>
+    <div class="col-body" id="jobs"><div class="empty">carregando…</div></div>
+    <div class="col-head"><h2>Eventos</h2><div class="spacer"></div>
+      <span class="pill" id="pill-sse">conectando…</span></div>
+    <div class="col-body log" id="log" style="max-height:150px;flex:none"></div>
+  </section>
+
+  <section class="col">
+    <div class="col-head">
+      <h2>Transcrição</h2>
+      <div class="spacer"></div>
+      <span class="pill" id="pill-viewer">nenhum job selecionado</span>
+    </div>
+    <div class="col-body" id="viewer">
+      <div class="empty">Selecione um job à esquerda.<br><br>
+        Configuração atual:<br><br>
+        <code>modelo {{ model }}</code><br>
+        <code>formato {{ formats }}</code><br>
+        <code>entrada {{ inbox }}</code><br>
+        <code>saída {{ outbox }}</code>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>transcritor v{{ version }}</span>
+  <span>faster-whisper · CTranslate2 · 100% offline</span>
+  <span id="uptime"></span>
+</footer>
+
+<script>
+const $ = (s, r=document) => r.querySelector(s);
+let jobs = [], selected = null, viewTimer = null;
+
+// ---------------------------------------------------------------- utils
+const esc = s => (s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function hhmmss(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  return (h ? h + "h " : "") + String(m).padStart(2,"0") + "min " + String(s).padStart(2,"0") + "s";
+}
+function clock(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  return (h ? h + ":" + String(m).padStart(2,"0") : String(m).padStart(2,"0")) + ":" + String(s).padStart(2,"0");
+}
+function fmtAgo(ts) {
+  const d = Date.now()/1000 - ts;
+  if (d < 60) return "agora";
+  if (d < 3600) return Math.floor(d/60) + " min";
+  if (d < 86400) return Math.floor(d/3600) + " h";
+  return Math.floor(d/86400) + " d";
+}
+const STATUS_PT = { queued:"na fila", running:"processando", done:"concluído", error:"erro", canceled:"cancelado" };
+
+function logline(html) {
+  const el = $("#log");
+  const div = document.createElement("div");
+  div.innerHTML = `<span style="opacity:.5">${new Date().toLocaleTimeString("pt-BR")}</span> ${html}`;
+  el.prepend(div);
+  while (el.children.length > 60) el.lastChild.remove();
+}
+
+// ---------------------------------------------------------------- estado
+async function refresh() {
+  try {
+    const r = await fetch("/api/jobs");
+    jobs = await r.json();
+  } catch { return; }
+  renderJobs();
+}
+async function refreshStatus() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    $("#pill-counts").textContent = `fila ${s.counts.queued} · rodando ${s.counts.running} · prontos ${s.counts.done} · erros ${s.counts.error}`;
+    $("#pill-engine").textContent = "motor " + (s.engine_loaded ? "carregado" : "carregando…");
+    $("#pill-engine").className = "pill " + (s.engine_loaded ? "ok" : "warn");
+    $("#pill-watch").textContent = "vigília " + (s.watching ? "ativa" : "inativa");
+    $("#pill-watch").className = "pill " + (s.watching ? "ok" : "");
+    $("#uptime").textContent = "no ar há " + hhmmss(s.uptime);
+  } catch {}
+}
+
+// ---------------------------------------------------------------- lista
+function filtered() {
+  const q = $("#filter").value.trim().toLowerCase();
+  const st = $("#status-filter").value;
+  return jobs.filter(j => {
+    if (st && j.status !== st) return false;
+    if (q && !(j.filename.toLowerCase().includes(q) || j.id.includes(q))) return false;
+    return true;
+  });
+}
+
+function renderJobs() {
+  const list = filtered();
+  const box = $("#jobs");
+  if (!list.length) {
+    box.innerHTML = `<div class="empty">Nada por aqui.<br><br>
+      Jogue um arquivo em <code>{{ inbox }}</code> ou envie acima.</div>`;
+    return;
+  }
+  box.innerHTML = list.map(j => {
+    const p = j.progress || {};
+    const pct = typeof p.percent === "number" ? p.percent : (j.status === "done" ? 100 : null);
+    const indet = j.status === "running" && pct === null;
+    const sel = selected === j.id ? " sel" : "";
+    const phase = p.phase ? `<span title="fase">${esc(phaseLabel(p.phase))}</span>` : "";
+    const eta = (p.eta != null && j.status === "running") ? `<span>faltam ${hhmmss(p.eta)}</span>` : "";
+    const dur = j.duration ? `<span>${hhmmss(j.duration)}</span>` : "";
+    const words = j.words ? `<span>${j.words} palavras</span>` : "";
+    const lang = j.language ? `<span>${esc(j.language)} ${(j.language_probability*100||0).toFixed(0)}%</span>` : "";
+    const run = j.run_seconds ? `<span>${j.run_seconds.toFixed(0)}s de CPU</span>` : "";
+    return `<div class="job${sel}" data-id="${j.id}">
+      <div class="job-top">
+        <span class="badge s-${j.status}">${STATUS_PT[j.status] || j.status}</span>
+        <span class="job-name" title="${esc(j.filename)}">${esc(j.filename)}</span>
+        <span class="ts" style="color:var(--dim)">${fmtAgo(j.created)}</span>
+      </div>
+      <div class="job-meta">${phase}${dur}${words}${lang}${run}${eta}<span>${esc(j.origin)}</span></div>
+      <div class="bar${indet ? " indet" : ""}"><i style="width:${pct ?? 0}%"></i></div>
+      ${p.preview ? `<div class="preview">${esc(p.preview)}</div>` : ""}
+      ${j.error ? `<div class="job-err">${esc(j.error)}</div>` : ""}
+      <div class="job-actions">
+        ${j.status === "running" ? `<button data-act="cancel" data-id="${j.id}">cancelar</button>` : ""}
+        ${(j.status === "error" || j.status === "canceled") ? `<button data-act="retry" data-id="${j.id}">tentar de novo</button>` : ""}
+        ${j.status === "done" ? `<button class="primary" data-act="view" data-id="${j.id}">ver</button>
+            <button data-act="dl-txt" data-id="${j.id}">.txt</button>
+            <button data-act="dl-srt" data-id="${j.id}">.srt</button>
+            <button data-act="dl-md" data-id="${j.id}">.md</button>
+            <button data-act="dl-json" data-id="${j.id}">.json</button>` : ""}
+        <button class="danger" data-act="rm" data-id="${j.id}">remover</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function phaseLabel(p) {
+  return ({ probing:"lendo metadados", probed:"metadados ok", extract_audio:"extraindo áudio",
+    normalizing:"normalizando", transcribing:"transcrevendo", writing:"gravando saídas",
+    done:"concluído", iniciando:"iniciando" })[p] || p;
+}
+
+// ---------------------------------------------------------------- ações
+document.addEventListener("click", async e => {
+  const btn = e.target.closest("button[data-act]");
+  if (btn) {
+    e.stopPropagation();
+    const id = btn.dataset.id, act = btn.dataset.act;
+    if (act === "cancel") { await fetch(`/api/jobs/${id}/cancel`, {method:"POST"}); logline("cancelamento pedido"); }
+    else if (act === "retry") { await fetch(`/api/jobs/${id}/retry`, {method:"POST"}); logline("job reenfileirado"); }
+    else if (act === "rm") { await fetch(`/api/jobs/${id}`, {method:"DELETE"}); if (selected === id) clearViewer(); }
+    else if (act === "view") { openJob(id); }
+    else if (act.startsWith("dl-")) { window.location = `/api/download/${id}/${act.slice(3)}`; }
+    refresh(); refreshStatus();
+    return;
+  }
+  const job = e.target.closest(".job");
+  if (job) openJob(job.dataset.id);
+});
+
+$("#filter").addEventListener("input", renderJobs);
+$("#status-filter").addEventListener("change", renderJobs);
+$("#btn-clear").addEventListener("click", async () => {
+  const r = await (await fetch("/api/jobs/clear", {method:"POST"})).json();
+  logline(`limpeza: <b>${r.removed}</b> job(s) removido(s)`);
+  refresh(); refreshStatus();
+});
+$("#btn-scan").addEventListener("click", async () => {
+  const r = await (await fetch("/api/scan", {method:"POST"})).json();
+  logline(`varredura: <b>${r.enqueued}</b> novo(s) arquivo(s)`);
+  refresh();
+});
+
+// ---------------------------------------------------------------- upload
+const drop = $("#drop");
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add("hot");
+}));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.remove("hot");
+}));
+drop.addEventListener("drop", e => upload([...e.dataTransfer.files]));
+$("#file").addEventListener("change", e => upload([...e.target.files]));
+
+async function upload(files) {
+  for (const f of files) {
+    logline(`enviando <b>${esc(f.name)}</b> (${(f.size/1048576).toFixed(1)} MB)…`);
+    try {
+      const res = await fetch("/api/upload?name=" + encodeURIComponent(f.name), {
+        method: "POST", body: f, headers: {"Content-Type": "application/octet-stream"}
+      });
+      const j = await res.json();
+      if (!res.ok) logline(`falha: <span style="color:var(--err)">${esc(j.error)}</span>`);
+      else logline(`<b>${esc(j.filename)}</b> entrou na fila`);
+    } catch (err) {
+      logline(`erro no envio: ${esc(String(err))}`);
+    }
+  }
+  refresh(); refreshStatus();
+}
+
+// ---------------------------------------------------------------- visualizador
+function clearViewer() {
+  selected = null;
+  if (viewTimer) { clearTimeout(viewTimer); viewTimer = null; }
+  $("#pill-viewer").textContent = "nenhum job selecionado";
+  $("#viewer").innerHTML = `<div class="empty">Selecione um job à esquerda.</div>`;
+  renderJobs();
+}
+
+async function openJob(id) {
+  selected = id;
+  renderJobs();
+  const job = jobs.find(j => j.id === id);
+  $("#pill-viewer").textContent = job ? job.filename : id;
+  $("#viewer").innerHTML = `<div class="empty">carregando transcrição…</div>`;
+
+  if (!job) return;
+  if (job.status !== "done") {
+    $("#viewer").innerHTML = `<div class="viewer-head"><span class="name">${esc(job.filename)}</span>
+      <span class="badge s-${job.status}">${STATUS_PT[job.status]}</span></div>
+      <div class="stats"><span>fase <b>${esc(phaseLabel((job.progress||{}).phase || "iniciando"))}</b></span>
+      <span>posição <b>${clock((job.progress||{}).position||0)}</b></span>
+      <span>de <b>${clock(job.progress?.duration||job.duration||0)}</b></span></div>
+      <div class="bar${job.status==="running"?" indet":""}"><i></i></div>
+      ${job.error ? `<p style="color:var(--err)">${esc(job.error)}</p>` : ""}`;
+    viewTimer = setTimeout(() => { if (selected === id) openJob(id); }, 1200);
+    return;
+  }
+
+  const txt = await (await fetch(`/api/transcript/${id}?format=txt`)).text();
+  const segs = await (await fetch(`/api/transcript/${id}?format=json`)).json().catch(() => null);
+
+  let body;
+  if (segs && segs.segments && segs.segments.length) {
+    body = segs.segments.map(s =>
+      `<div class="seg-row" data-t="${s.start}"><span class="ts" data-t="${s.start}">${clock(s.start)}</span><span>${esc(s.text)}</span></div>`
+    ).join("");
+  } else {
+    body = `<pre class="transcript">${esc(txt)}</pre>`;
+  }
+
+  $("#viewer").innerHTML = `
+    <div class="viewer-head">
+      <span class="name" title="${esc(job.filename)}">${esc(job.filename)}</span>
+      <span class="badge s-done">concluído</span>
+    </div>
+    <audio id="player" controls preload="metadata" src="/api/audio/${id}"></audio>
+    <div class="stats">
+      <span>duração <b>${hhmmss(job.duration)}</b></span>
+      <span>processado em <b>${hhmmss(job.elapsed)}</b></span>
+      <span>velocidade <b>${job.elapsed ? (job.duration/job.elapsed).toFixed(2) : "—"}x</b></span>
+      <span>palavras <b>${job.words}</b></span>
+      <span>idioma <b>${esc(job.language)} ${((job.language_probability||0)*100).toFixed(0)}%</b></span>
+      <span>segmentos <b>${segs?.segment_count ?? "—"}</b></span>
+    </div>
+    <div class="job-actions" style="margin-bottom:12px">
+      <button class="primary" data-act="dl-txt" data-id="${id}">baixar .txt</button>
+      <button data-act="dl-srt" data-id="${id}">.srt</button>
+      <button data-act="dl-vtt" data-id="${id}">.vtt</button>
+      <button data-act="dl-md" data-id="${id}">.md</button>
+      <button data-act="dl-json" data-id="${id}">.json</button>
+      <button data-act="retry" data-id="${id}">reprocessar</button>
+    </div>
+    <div id="segs">${body}</div>`;
+
+  const player = $("#player");
+  $("#viewer").addEventListener("click", e => {
+    const t = e.target.closest("[data-t]");
+    if (t && player) {
+      player.currentTime = parseFloat(t.dataset.t) || 0;
+      player.play();
+    }
+  });
+  if (player) {
+    player.addEventListener("timeupdate", () => {
+      const rows = document.querySelectorAll(".seg-row");
+      let active = null;
+      for (const r of rows) {
+        if (parseFloat(r.dataset.t) <= player.currentTime + 0.01) active = r; else break;
+      }
+      rows.forEach(r => r.classList.toggle("hot", r === active));
+    });
+  }
+}
+
+// ---------------------------------------------------------------- SSE
+function connect() {
+  const es = new EventSource("/api/events");
+  es.onopen = () => { $("#pill-sse").textContent = "conectado"; $("#pill-sse").className = "pill ok"; };
+  es.onerror = () => {
+    $("#pill-sse").textContent = "reconectando…"; $("#pill-sse").className = "pill warn";
+    refresh(); refreshStatus();
+  };
+  const on = (name, msgFn) => es.addEventListener(name, e => {
+    let d = {}; try { d = JSON.parse(e.data); } catch {}
+    if (msgFn) logline(msgFn(d));
+    refresh();
+    if (d.job_id && selected === d.job_id && name !== "job_progress") openJob(selected);
+  });
+  on("enqueued", d => `<b>${esc(d.filename)}</b> enfileirado`);
+  on("job_start", d => `iniciando <b>${esc(d.filename || d.job_id)}</b>`);
+  on("engine_ready", d => `motor pronto (${d.seconds}s) — modelo <b>${esc(d.model)}</b>`);
+  on("engine_error", d => `<span style="color:var(--err)">falha no motor: ${esc(d.error)}</span>`);
+  on("job_progress", d => {
+    if (d.phase === "transcribing" && d.percent != null) {
+      const j = jobs.find(x => x.id === d.job_id);
+      if (j) { j.progress = d; renderJobs(); }
+      if (selected === d.job_id) {
+        $("#pill-viewer").textContent = (j?.filename || "") + " — " + d.percent.toFixed(0) + "%";
+      }
+    }
+    return null;
+  });
+  on("job_done", d => `✔ <b>${esc(d.job_id)}</b> concluído em ${hhmmss(d.elapsed)} (${d.words} palavras)`);
+  on("job_error", d => `<span style="color:var(--err)">✘ ${esc(d.job_id)}: ${esc(d.error)}</span>`);
+  on("canceled", d => `cancelado ${esc(d.job_id)}`);
+  es.addEventListener("job_progress", () => {});
+}
+
+connect();
+refresh(); refreshStatus();
+setInterval(refreshStatus, 4000);
+</script>
+</body>
+</html>

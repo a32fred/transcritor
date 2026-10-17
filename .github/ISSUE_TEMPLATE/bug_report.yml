@@ -1,0 +1,69 @@
+name: Relato de erro
+description: Relate um problema reproduzível no transcritor.
+title: "[Erro]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado pelo relato! Procure issues semelhantes antes de enviar.
+        Não publique vulnerabilidades aqui: consulte SECURITY.md.
+        Remova dados pessoais dos diagnósticos e não anexe mídia privada.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Descrição do problema
+      description: Explique o erro e seu impacto.
+    validations: { required: true }
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Passos para reproduzir
+      description: Inclua comandos, opções e uma reprodução mínima.
+      placeholder: |
+        1. Executar...
+        2. Observar...
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento esperado
+    validations: { required: true }
+  - type: textarea
+    id: info
+    attributes:
+      label: Saída de transcrever info
+      description: Cole a saída completa, removendo informações pessoais.
+      render: shell
+    validations: { required: true }
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Saída de transcrever doctor
+      description: Cole inclusive as pendências apontadas pelo diagnóstico.
+      render: shell
+    validations: { required: true }
+  - type: input
+    id: operating-system
+    attributes:
+      label: Sistema operacional
+      placeholder: "Ubuntu 24.04, Windows 11, macOS..."
+    validations: { required: true }
+  - type: input
+    id: python-version
+    attributes:
+      label: Versão do Python
+      description: Saída de python --version.
+    validations: { required: true }
+  - type: input
+    id: model
+    attributes:
+      label: Modelo usado
+      placeholder: "large-v3, tiny ou não aplicável"
+    validations: { required: true }
+  - type: input
+    id: media
+    attributes:
+      label: Formato e duração aproximada do áudio
+      placeholder: "MP3, 15 minutos; ou não aplicável"
+    validations: { required: true }

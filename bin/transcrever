@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Lançador do transcritor. Funciona de qualquer diretório e também
+# através de link simbólico (ex.: ~/.local/bin/transcrever).
+set -euo pipefail
+
+# --- descobre o caminho real, seguindo links simbólicos -------------------
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  _target="$(readlink "$SELF")"
+  case "$_target" in
+    /*) SELF="$_target" ;;
+    *)  SELF="$(cd "$(dirname "$SELF")" && pwd)/$_target" ;;
+  esac
+done
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+if [ ! -d "$ROOT/transcritor" ]; then
+  echo "erro: instalação do transcritor não encontrada em $ROOT" >&2
+  echo "      (o link simbólico aponta para um lugar inesperado)" >&2
+  exit 1
+fi
+
+export TRANSCRITOR_HOME="${TRANSCRITOR_HOME:-$ROOT}"
+export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
+# --- escolhe um interpretador que tenha o faster-whisper ------------------
+find_python() {
+  for cand in "${TRANSCRITOR_PYTHON:-}" python3 python; do
+    [ -n "$cand" ] || continue
+    if command -v "$cand" >/dev/null 2>&1 &&
+       "$cand" -c "import faster_whisper" >/dev/null 2>&1; then
+      command -v "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! PY="$(find_python)"; then
+  echo "erro: nenhum python com faster-whisper encontrado." >&2
+  echo "instale com:  python3 -m pip install -r $ROOT/requirements.txt" >&2
+  exit 1
+fi
+
+exec "$PY" -m transcritor "$@"
