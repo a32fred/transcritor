@@ -190,3 +190,80 @@ def test_to_dict_e_serializavel(cfg: Config):
     assert isinstance(d["home"], str)
     assert isinstance(d["formats"], list)
     json.dumps(d)  # não pode levantar
+
+
+# --------------------------------------------------------------------------
+# Onde ficam os dados (código e dados separados)
+# --------------------------------------------------------------------------
+
+def test_home_padrao_vai_para_o_xdg_quando_e_instalacao_nova(monkeypatch, tmp_path: Path):
+    """Instalado pelo pipx não existe pasta de código: dados vão para o XDG."""
+    import transcritor.config as config_mod
+
+    casa = tmp_path / "casa"
+    casa.mkdir()
+    monkeypatch.delenv("TRANSCRITOR_HOME", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "dados"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: casa))
+
+    assert config_mod._home_padrao() == tmp_path / "dados" / "transcritor"
+
+
+def test_home_padrao_sem_xdg_usa_local_share(monkeypatch, tmp_path: Path):
+    import transcritor.config as config_mod
+
+    casa = tmp_path / "casa"
+    casa.mkdir()
+    monkeypatch.delenv("TRANSCRITOR_HOME", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: casa))
+
+    assert config_mod._home_padrao() == casa / ".local" / "share" / "transcritor"
+
+
+def test_home_padrao_respeita_layout_antigo(monkeypatch, tmp_path: Path):
+    """Quem já tem `~/transcritor/var` continua ali: nada é movido nem perdido."""
+    import transcritor.config as config_mod
+
+    casa = tmp_path / "casa"
+    (casa / "transcritor" / "var" / "outbox").mkdir(parents=True)
+    monkeypatch.delenv("TRANSCRITOR_HOME", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "dados"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: casa))
+
+    assert config_mod._home_padrao() == casa / "transcritor"
+
+
+def test_home_padrao_respeita_config_antigo(monkeypatch, tmp_path: Path):
+    """Basta existir o config.json antigo para o layout antigo valer."""
+    import transcritor.config as config_mod
+
+    casa = tmp_path / "casa"
+    (casa / "transcritor").mkdir(parents=True)
+    (casa / "transcritor" / "config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.delenv("TRANSCRITOR_HOME", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "dados"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: casa))
+
+    assert config_mod._home_padrao() == casa / "transcritor"
+
+
+def test_ambiente_vence_na_resolucao_do_home(monkeypatch, tmp_path: Path):
+    import transcritor.config as config_mod
+
+    monkeypatch.setenv("TRANSCRITOR_HOME", str(tmp_path / "escolhido"))
+    assert config_mod.resolver_home() == tmp_path / "escolhido"
+
+    monkeypatch.delenv("TRANSCRITOR_HOME")
+    assert config_mod.resolver_home() == config_mod.DEFAULT_HOME
+
+
+def test_load_usa_o_home_resolvido_agora(monkeypatch, tmp_path: Path):
+    """Regressão: config.json do home tem que refletir a decisão do momento."""
+    escolhido = tmp_path / "outro-lugar"
+    escolhido.mkdir()
+    monkeypatch.setenv("TRANSCRITOR_HOME", str(escolhido))
+
+    c = Config.load()
+    assert c.home == escolhido
+    assert c.inbox == escolhido / "var" / "inbox"

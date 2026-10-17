@@ -240,22 +240,31 @@ class Engine:
 # Utilidades de modelo
 # --------------------------------------------------------------------------
 
+def _tamanho_mb(pasta: Path) -> float:
+    """Soma o tamanho dos arquivos de uma pasta, em MB (0 se não existir).
+
+    Sem arredondar: quem mostra é que arredonda. O download precisa enxergar
+    centésimos de MB, senão a barra parece parada no começo.
+    """
+    total = 0
+    if pasta.exists():
+        for p in pasta.rglob("*"):
+            if p.is_file():
+                with contextlib.suppress(OSError):
+                    total += p.stat().st_size
+    return total / 1e6
+
+
 def model_status(cfg: Config) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for name, meta in KNOWN_MODELS.items():
         d = cfg.models_dir / f"faster-whisper-{name}"
-        size = 0
-        if d.exists():
-            for p in d.rglob("*"):
-                if p.is_file():
-                    with contextlib.suppress(OSError):
-                        size += p.stat().st_size
         out.append({
             "name": name,
             "repo": meta["repo"],
             "downloaded": (d / "model.bin").exists(),
             "path": str(d),
-            "disk_mb": round(size / 1e6, 1),
+            "disk_mb": round(_tamanho_mb(d), 1),
             "approx_mb": meta["size_mb"],
             "quality": meta["quality"],
             "active": name == cfg.model,
@@ -264,25 +273,80 @@ def model_status(cfg: Config) -> list[dict[str, Any]]:
 
 
 def download_model(name: str, cfg: Config, progress: ProgressFn | None = None) -> str:
-    """Baixa (ou revalida) um modelo do Hugging Face para modelos_dir."""
+    """Baixa (ou revalida) um modelo do Hugging Face para modelos_dir.
+
+    Com ``progress``, reporta o andamento medindo o que já chegou ao disco, em
+    vez de depender do formato interno do ``snapshot_download``. Importa
+    porque o modelo tem de 1,5 a 3 GB: uma barra de progresso é a diferença
+    entre esperar e achar que travou.
+    """
     meta = KNOWN_MODELS.get(name)
     repo = meta["repo"] if meta else name
     target = cfg.models_dir / f"faster-whisper-{name if meta else name.split('/')[-1]}"
     target.mkdir(parents=True, exist_ok=True)
+    esperado_mb = float(meta["size_mb"]) if meta else 0.0
 
     from huggingface_hub import snapshot_download
 
-    if progress:
-        progress({"phase": "downloading", "model": name, "repo": repo, "path": str(target)})
+    # O huggingface_hub desenha uma barra por arquivo, em stderr. Quem mostra o
+    # progresso é o transcritor, com a porcentagem do modelo inteiro.
+    extra: dict[str, Any] = {}
+    try:
+        from tqdm.auto import tqdm
 
-    snapshot_download(
-        repo_id=repo,
-        local_dir=str(target),
-        allow_patterns=[
-            "config.json", "tokenizer.json", "vocabulary.*",
-            "model.bin", "preprocessor_config.json",
-        ],
-    )
-    if progress:
-        progress({"phase": "downloaded", "model": name, "path": str(target)})
+        class _Silencioso(tqdm):  # type: ignore[misc]
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                kw["disable"] = True
+                super().__init__(*a, **kw)
+
+        extra["tqdm_class"] = _Silencioso
+    except ImportError:  # pragma: no cover - tqdm vem com o huggingface_hub
+        pass
+
+    def baixar() -> None:
+        snapshot_download(
+            repo_id=repo,
+            local_dir=str(target),
+            allow_patterns=[
+                "config.json", "tokenizer.json", "vocabulary.*",
+                "model.bin", "preprocessor_config.json",
+            ],
+            **extra,
+        )
+
+    if progress is None:
+        baixar()
+        return str(target)
+
+    base = {"model": name, "repo": repo, "path": str(target), "expected_mb": esperado_mb}
+
+    def reportar(downloaded_mb: float, percent: float, fase: str) -> None:
+        progress({**base, "phase": fase, "downloaded_mb": round(downloaded_mb, 3),
+                  "percent": round(percent, 1)})
+
+    reportar(_tamanho_mb(target), 0.0, "downloading")
+
+    erro: list[BaseException] = []
+
+    def em_thread() -> None:
+        try:
+            baixar()
+        except BaseException as exc:  # repassado para a thread principal
+            erro.append(exc)
+
+    t = threading.Thread(target=em_thread, name="download-modelo", daemon=True)
+    t.start()
+    while t.is_alive():
+        t.join(0.5)
+        atual = _tamanho_mb(target)
+        # 99% é o teto enquanto o download não termina: o tamanho publicado é
+        # aproximado, e ver "100%" antes do fim é pior do que não ver.
+        pct = min(99.0, atual / esperado_mb * 100.0) if esperado_mb else 0.0
+        reportar(atual, pct, "downloading")
+    t.join()
+
+    if erro:
+        raise erro[0]
+
+    reportar(_tamanho_mb(target), 100.0, "downloaded")
     return str(target)

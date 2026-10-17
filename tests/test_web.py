@@ -30,6 +30,8 @@ def web(cfg, monkeypatch, engine_factory):
     srv_mod.Handler.runner = srv.runner
     srv_mod.Handler.watcher = srv.watcher
     srv_mod.Handler.bus = srv.bus
+    srv_mod.Handler.modelo = srv.model_download
+    srv_mod.Handler.modelo_lock = srv.modelo_lock
 
     srv.runner.start()
     t = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
@@ -479,3 +481,96 @@ def test_eventos_reproduz_historico(base, web, audio_file):
 
     assert b"event: enqueued" in buffer, buffer
     assert b"historico.wav" in buffer
+
+
+# --------------------------------------------------------------------------
+# Modelo ausente: a interface precisa conseguir resolver sozinha
+# --------------------------------------------------------------------------
+
+def test_pagina_tem_faixa_para_baixar_o_modelo(base):
+    """Quem só usa o navegador não pode ficar sem saída quando falta o modelo."""
+    status, corpo, _ = pedido("GET", base + "/")
+    assert status == 200
+    html = corpo.decode("utf-8")
+    assert 'id="banner-modelo"' in html
+    assert 'id="btn-modelo"' in html
+    assert "/api/models/download" in html
+    assert "model_ready" in html, "a faixa some quando o modelo já está baixado"
+
+
+@pytest.fixture
+def servidor_frio(cfg, monkeypatch, engine_factory):
+    """Servidor sem aquecimento: nada é baixado até alguém pedir.
+
+    O servidor normal (``web``) aquece o motor ao subir, e o aquecimento baixa
+    o modelo. Para testar o download pedido pela interface isso viraria uma
+    corrida, então aqui o runner fica parado.
+    """
+    monkeypatch.setattr(runner_mod, "Engine", engine_factory)
+    srv = srv_mod.TranscritorServer(("127.0.0.1", 0), srv_mod.Handler, cfg, watch=False)
+    for nome, valor in (("cfg", cfg), ("store", srv.store), ("runner", srv.runner),
+                        ("watcher", srv.watcher), ("bus", srv.bus),
+                        ("modelo", srv.model_download), ("modelo_lock", srv.modelo_lock)):
+        setattr(srv_mod.Handler, nome, valor)
+    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05},
+                     daemon=True).start()
+    try:
+        host, porta = srv.server_address[:2]
+        yield srv, f"http://{host}:{porta}"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_status_traz_o_estado_do_modelo(servidor_frio):
+    _, base = servidor_frio
+    status, corpo, _ = pedido("GET", base + "/api/status")
+    assert status == 200
+    d = json.loads(corpo)
+    assert d["model_size_mb"] == 75, "tamanho do tiny, para dizer quanto vai baixar"
+    assert d["model_ready"] is False
+    assert d["model_download"]["active"] is False
+    assert "percent" in d["model_download"]
+
+
+def test_api_baixa_o_modelo_pedido_pela_interface(servidor_frio, sem_download):
+    servidor, base = servidor_frio
+    status, corpo, _ = pedido("POST", base + "/api/models/download",
+                              json.dumps({}).encode("utf-8"),
+                              {"Content-Type": "application/json"})
+    assert status == 202
+    d = json.loads(corpo)
+    assert d["ok"] is True
+    assert d["model"] == "tiny"
+
+    limite = time.time() + 10
+    while time.time() < limite:
+        _, estado, _ = pedido("GET", base + "/api/status")
+        if json.loads(estado)["model_ready"]:
+            break
+        time.sleep(0.05)
+
+    _, estado, _ = pedido("GET", base + "/api/status")
+    final = json.loads(estado)
+    assert final["model_ready"] is True, "o modelo tem que aparecer como pronto"
+    assert final["model_download"]["active"] is False, "a barra precisa parar"
+    assert final["model_download"]["percent"] == 100.0
+    assert sem_download.chamadas == ["tiny"]
+    assert servidor.cfg.model in estado_str(final), "o nome do modelo vai para a faixa"
+
+
+def test_api_nao_dispara_dois_downloads_do_mesmo_modelo(servidor_frio):
+    """Duas abas clicando junto não podem baixar 3 GB duas vezes."""
+    servidor, base = servidor_frio
+    with servidor.modelo_lock:
+        servidor.model_download.update({"active": True, "model": "tiny"})
+
+    status, corpo, _ = pedido("POST", base + "/api/models/download",
+                              json.dumps({}).encode("utf-8"),
+                              {"Content-Type": "application/json"})
+    assert status == 409
+    assert json.loads(corpo)["already_running"] is True
+
+
+def estado_str(d: dict) -> str:
+    return json.dumps(d, ensure_ascii=False)

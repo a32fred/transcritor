@@ -120,6 +120,20 @@
   .tabs button.active { border-color: var(--accent); color: var(--accent); background: rgba(76,194,255,.12); }
   footer { padding: 8px 20px; border-top: 1px solid var(--line); color: var(--dim);
            font-family: var(--mono); font-size: 11px; display: flex; gap: 16px; flex-wrap: wrap; }
+
+  /* faixa de primeira configuração: falta baixar o modelo */
+  .banner {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin: 0 20px 10px; padding: 10px 14px; border-radius: 10px;
+    background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.35);
+    font-size: 13px; color: #fde68a;
+  }
+  .banner b { color: #fff; }
+  .banner .bar { flex: 1 1 160px; height: 8px; border-radius: 5px;
+                 background: rgba(255,255,255,.14); overflow: hidden; }
+  .banner .bar > i { display: block; height: 100%; width: 0;
+                     background: var(--accent); transition: width .3s ease; }
+  .banner #modelo-pct { font-family: var(--mono); font-size: 11px; color: var(--dim); }
 </style>
 </head>
 <body>
@@ -144,6 +158,14 @@
     <button id="btn-clear">limpar finalizados</button>
   </div>
 </header>
+
+<div id="banner-modelo" class="banner" hidden>
+  <b>Falta baixar o modelo de transcrição.</b>
+  <span id="modelo-texto"></span>
+  <button class="primary" id="btn-modelo">baixar agora</button>
+  <div class="bar" id="modelo-bar" hidden><i></i></div>
+  <span id="modelo-pct" hidden></span>
+</div>
 
 <main>
   <section class="col">
@@ -213,6 +235,7 @@ function fmtAgo(ts) {
 const STATUS_PT = { queued:"na fila", running:"processando", done:"concluído", error:"erro", canceled:"cancelado" };
 
 function logline(html) {
+  if (html == null || html === "") return;
   const el = $("#log");
   const div = document.createElement("div");
   div.innerHTML = `<span style="opacity:.5">${new Date().toLocaleTimeString("pt-BR")}</span> ${html}`;
@@ -237,7 +260,60 @@ async function refreshStatus() {
     $("#pill-watch").textContent = "vigília " + (s.watching ? "ativa" : "inativa");
     $("#pill-watch").className = "pill " + (s.watching ? "ok" : "");
     $("#uptime").textContent = "no ar há " + hhmmss(s.uptime);
+    mostrarBannerModelo(s);
   } catch {}
+}
+
+// ------------------------------------------------------- modelo ausente
+// Sem esta faixa, quem só usa o navegador arrasta um áudio e recebe um erro
+// sobre um modelo que não tem como baixar dali.
+function tamanhoLegivel(mb) {
+  if (!mb) return "";
+  return mb >= 1000 ? (mb / 1000).toFixed(1).replace(".", ",") + " GB" : mb + " MB";
+}
+
+function mostrarBannerModelo(s) {
+  const b = $("#banner-modelo");
+  if (!b) return;
+  if (s.model_ready) { b.hidden = true; return; }
+
+  const dl = s.model_download || {};
+  b.hidden = false;
+  const botao = $("#btn-modelo"), barra = $("#modelo-bar"), pct = $("#modelo-pct");
+
+  if (dl.active) {
+    botao.hidden = true;
+    barra.hidden = false; pct.hidden = false;
+    barra.firstElementChild.style.width = (dl.percent || 0) + "%";
+    pct.textContent = (dl.percent || 0).toFixed(0) + "% · " +
+      (dl.downloaded_mb || 0).toFixed(0) + " de ~" + (dl.expected_mb || 0).toFixed(0) + " MB";
+    $("#modelo-texto").textContent = "baixando " + esc(dl.model || s.model) + "…";
+    return;
+  }
+
+  botao.hidden = false;
+  barra.hidden = true; pct.hidden = true;
+  const tam = tamanhoLegivel(s.model_size_mb);
+  botao.textContent = "baixar agora" + (tam ? " (" + tam + ")" : "");
+  $("#modelo-texto").textContent = dl.error
+    ? "erro ao baixar: " + dl.error
+    : "Uma vez só, depois funciona sem internet — modelo " + s.model +
+      (s.model_quality ? " (" + s.model_quality + ")" : "") + ".";
+}
+
+async function pedirModelo() {
+  const botao = $("#btn-modelo");
+  botao.disabled = true;
+  try {
+    const r = await fetch("/api/models/download", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+    });
+    if (r.status === 409) logline("o download do modelo já está em andamento");
+  } catch (e) {
+    logline("não consegui pedir o download: " + e);
+  }
+  botao.disabled = false;
+  refreshStatus();
 }
 
 // ---------------------------------------------------------------- lista
@@ -475,10 +551,25 @@ function connect() {
   on("job_done", d => `✔ <b>${esc(d.job_id)}</b> concluído em ${hhmmss(d.elapsed)} (${d.words} palavras)`);
   on("job_error", d => `<span style="color:var(--err)">✘ ${esc(d.job_id)}: ${esc(d.error)}</span>`);
   on("canceled", d => `cancelado ${esc(d.job_id)}`);
+  on("model_start", d => `baixando o modelo <b>${esc(d.model)}</b>…`);
+  on("model_downloaded", d => `modelo <b>${esc(d.model)}</b> pronto — já pode transcrever`);
+  on("model_error", d => `<span style="color:var(--err)">falha ao baixar o modelo: ${esc(d.error)}</span>`);
+  // O progresso chega a cada meio segundo: repinta só a faixa, sem recarregar
+  // a lista inteira de jobs.
+  es.addEventListener("model_progress", e => {
+    let d = {}; try { d = JSON.parse(e.data); } catch {}
+    mostrarBannerModelo({
+      model_ready: false, model: d.model, model_size_mb: d.expected_mb,
+      model_download: { active: true, model: d.model, percent: d.percent,
+                        downloaded_mb: d.downloaded_mb, expected_mb: d.expected_mb }
+    });
+  });
   es.addEventListener("job_progress", () => {});
 }
 
 connect();
+const botaoModelo = $("#btn-modelo");
+if (botaoModelo) botaoModelo.onclick = pedirModelo;
 refresh(); refreshStatus();
 setInterval(refreshStatus, 4000);
 </script>

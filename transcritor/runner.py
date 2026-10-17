@@ -15,8 +15,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .config import Config
-from .engine import Engine
+from .config import KNOWN_MODELS, Config
+from .engine import Engine, download_model
 from .jobs import Job, JobStore
 from .pipeline import Pipeline
 
@@ -68,6 +68,29 @@ class Runner:
                 log.debug("on_event falhou", exc_info=True)
 
     # ------------------------------------------------------------------
+    def garantir_modelo(self) -> None:
+        """Baixa o modelo antes de carregar, emitindo progresso.
+
+        Sem isso, o faster-whisper baixa de 1,5 a 3 GB **dentro** do
+        carregamento do motor, sem aviso nem barra: o usuário vê minutos de
+        silêncio e conclui que travou. Aqui o download vira um evento
+        ``model_progress``, que a TUI e a interface web sabem mostrar.
+        """
+        if self.cfg.local_model_path:
+            return
+        if self.cfg.model not in KNOWN_MODELS:
+            return  # repositório arbitrário do Hugging Face: sem tamanho previsto
+        self.emit("model_start", model=self.cfg.model,
+                  expected_mb=KNOWN_MODELS[self.cfg.model]["size_mb"])
+        try:
+            download_model(self.cfg.model, self.cfg,
+                           progress=lambda info: self.emit("model_progress", **info))
+        except Exception as exc:
+            self.emit("model_error", model=self.cfg.model, error=str(exc))
+            raise
+        self.emit("model_downloaded", model=self.cfg.model,
+                  path=str(self.cfg.models_dir / f"faster-whisper-{self.cfg.model}"))
+
     def start(self, *, warmup: bool = True) -> None:
         if self._running:
             return
@@ -77,6 +100,7 @@ class Runner:
         if warmup:
             def _warm() -> None:
                 try:
+                    self.garantir_modelo()
                     t = self.engine.warmup()
                     self.emit("engine_ready", seconds=round(t, 2), model=self.cfg.model)
                 except Exception as exc:

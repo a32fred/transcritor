@@ -37,6 +37,29 @@ def make_segments() -> list[Segment]:
     ]
 
 
+class FakeDownload:
+    """Substitui ``download_model``: cria um ``model.bin`` de mentira.
+
+    O sistema real baixa de 1,5 a 3 GB do Hugging Face. Nenhum teste pode
+    encostar na rede, então todos os pontos de entrada (CLI, runner e web)
+    recebem este dublê pela fixture ``sem_download``.
+    """
+
+    def __init__(self) -> None:
+        self.chamadas: list[str] = []
+
+    def __call__(self, name, cfg, progress=None):
+        self.chamadas.append(name)
+        destino = cfg.models_dir / f"faster-whisper-{name}"
+        destino.mkdir(parents=True, exist_ok=True)
+        (destino / "model.bin").write_bytes(b"modelo de mentira")
+        if progress:
+            base = {"model": name, "repo": "fake/repo", "path": str(destino), "expected_mb": 100.0}
+            progress({**base, "phase": "downloading", "downloaded_mb": 50.0, "percent": 50.0})
+            progress({**base, "phase": "downloaded", "downloaded_mb": 100.0, "percent": 100.0})
+        return str(destino)
+
+
 class FakeEngine:
     """Dublê do ``Engine`` com a mesma interface pública usada pelo sistema."""
 
@@ -122,6 +145,23 @@ def engine(cfg: Config) -> FakeEngine:
 def engine_factory():
     """A classe dublê, para quem precisa substituir ``Engine`` no módulo."""
     return FakeEngine
+
+
+@pytest.fixture(autouse=True)
+def sem_download(monkeypatch):
+    """Nenhum teste baixa modelo: o download vira um dublê em todos os módulos.
+
+    É automático de propósito. Um único caminho esquecido (CLI, runner ou web)
+    faria a suíte tentar baixar gigabytes do Hugging Face.
+    """
+    import transcritor.cli as cli_mod
+    import transcritor.runner as runner_mod
+    import transcritor.web.server as web_server_mod
+
+    fake = FakeDownload()
+    for modulo in (cli_mod, runner_mod, web_server_mod):
+        monkeypatch.setattr(modulo, "download_model", fake, raising=False)
+    return fake
 
 
 @pytest.fixture

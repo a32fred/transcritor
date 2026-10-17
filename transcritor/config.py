@@ -22,7 +22,48 @@ from typing import Any
 # Caminhos
 # --------------------------------------------------------------------------
 
-DEFAULT_HOME = Path(os.environ.get("TRANSCRITOR_HOME", Path.home() / "transcritor")).expanduser()
+def _home_padrao() -> Path:
+    """Diretório de dados padrão.
+
+    Ordem de decisão:
+
+    1. ``$TRANSCRITOR_HOME`` sempre manda, quando definido.
+    2. Quem já tem dados no layout antigo (``~/transcritor/var``, ``models`` ou
+       ``config.json``) continua em ``~/transcritor`` — nada é movido nem
+       perdido.
+    3. Caso novo: ``$XDG_DATA_HOME/transcritor`` (ou
+       ``~/.local/share/transcritor``), separando os **dados** do **código**.
+
+    O item 3 é o que importa para quem instala com ``pipx``/``pip``: não existe
+    uma pasta de código em ``~/transcritor`` para guardar dados, e misturar os
+    dois faz o usuário não saber o que é programa e o que é arquivo dele.
+    """
+    env = os.environ.get("TRANSCRITOR_HOME")
+    if env:
+        return Path(env).expanduser()
+
+    legado = Path.home() / "transcritor"
+    if (legado / "var").is_dir() or (legado / "models").is_dir() or (legado / "config.json").is_file():
+        return legado
+
+    raiz = os.environ.get("XDG_DATA_HOME")
+    base = Path(raiz).expanduser() if raiz else Path.home() / ".local" / "share"
+    return base / "transcritor"
+
+
+# Valor resolvido na importação, usado como default do dataclass `Config`.
+DEFAULT_HOME = _home_padrao()
+
+
+def resolver_home() -> Path:
+    """Home efetivo, resolvido a cada chamada.
+
+    ``$TRANSCRITOR_HOME`` tem precedência; sem ele, vale ``DEFAULT_HOME``.
+    Resolver na hora da chamada (em vez de só na importação) é o que permite
+    isolar o ambiente — testes e o lançador ``bin/transcrever`` dependem disso.
+    """
+    env = os.environ.get("TRANSCRITOR_HOME")
+    return Path(env).expanduser() if env else DEFAULT_HOME
 
 
 def _env_bool(key: str, default: bool) -> bool:
@@ -198,7 +239,7 @@ class Config:
 
     @classmethod
     def load(cls, path: Path | None = None) -> Config:
-        home = DEFAULT_HOME
+        home = resolver_home()
         path = Path(path).expanduser() if path else home / "config.json"
         data: dict[str, Any] = {}
         if path.exists():
@@ -210,8 +251,8 @@ class Config:
         valid = set(cls.__dataclass_fields__)  # type: ignore[attr-defined]
         data = {k: v for k, v in data.items() if k in valid and not k.startswith("__")}
         # O default do campo `home` é congelado na definição da classe (import),
-        # então precisamos reafirmar o DEFAULT_HOME atual — é ele que reflete
-        # $TRANSCRITOR_HOME.
+        # então reafirmamos o home resolvido agora — é ele que reflete
+        # $TRANSCRITOR_HOME e a escolha entre o layout antigo e o XDG.
         data.setdefault("home", home)
         for k in ("temperatures", "formats"):
             if k in data and data[k] is not None:

@@ -33,10 +33,10 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
-from ..config import Config
-from ..engine import model_status
+from ..config import KNOWN_MODELS, Config
+from ..engine import download_model, model_status
 from ..jobs import JobStore
 from ..media import is_media_file
 from ..runner import Runner
@@ -98,6 +98,14 @@ class Handler(BaseHTTPRequestHandler):
     runner: Runner
     watcher: Watcher | None
     bus: EventBus
+    # estado compartilhado do download do modelo (ver _api_model_download).
+    # O servidor substitui por instância em serve(); o default existe para um
+    # handler montado à mão (testes) nunca responder 500.
+    modelo: ClassVar[dict[str, Any]] = {
+        "active": False, "model": "", "percent": 0.0, "downloaded_mb": 0.0,
+        "expected_mb": 0.0, "error": "", "path": "",
+    }
+    modelo_lock: ClassVar[threading.Lock] = threading.Lock()
 
     # ---- infraestrutura -------------------------------------------------
     def log_message(self, fmt: str, *args: Any) -> None:  # silencia o log ruidoso
@@ -209,6 +217,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._api_add_paths()
             if path == "/api/jobs/clear":
                 return self._api_clear()
+            if path == "/api/models/download":
+                return self._api_model_download()
             m = re.fullmatch(r"/api/jobs/([A-Za-z0-9_-]+)/(cancel|retry)", path)
             if m:
                 job_id, action = m.groups()
@@ -266,6 +276,9 @@ class Handler(BaseHTTPRequestHandler):
             "inbox": str(self.cfg.inbox),
             "outbox": str(self.cfg.outbox),
             "model_ready": bool(self.cfg.local_model_path),
+            "model_size_mb": KNOWN_MODELS.get(self.cfg.model, {}).get("size_mb", 0),
+            "model_quality": KNOWN_MODELS.get(self.cfg.model, {}).get("quality", ""),
+            "model_download": dict(self.modelo),
             "uptime": round(time.time() - self.server.started_at, 1),  # type: ignore[attr-defined]
         })
 
@@ -459,6 +472,48 @@ class Handler(BaseHTTPRequestHandler):
         self.bus.publish("enqueued", {"job_id": job_id, "filename": job.filename})
         return self._json({"requeued": True})
 
+    def _api_model_download(self) -> None:
+        """Baixa o modelo ativo em segundo plano, com progresso pelo SSE.
+
+        É o que permite resolver tudo pela interface. Sem isso, quem só usa o
+        navegador arrasta um áudio e recebe um erro sobre um modelo que não tem
+        como baixar dali.
+        """
+        dados = self._body_json()
+        nome = str(dados.get("name") or self.cfg.model)
+
+        with self.modelo_lock:
+            if self.modelo.get("active"):
+                return self._json({"ok": False, "already_running": True, **self.modelo}, 409)
+            meta = KNOWN_MODELS.get(nome)
+            esperado = float(meta["size_mb"]) if meta else 0.0
+            self.modelo.update({"active": True, "model": nome, "percent": 0.0,
+                                "downloaded_mb": 0.0, "expected_mb": esperado,
+                                "error": "", "path": ""})
+
+        def progresso(info: dict) -> None:
+            with self.modelo_lock:
+                self.modelo.update({k: v for k, v in info.items() if k in self.modelo})
+                self.modelo["active"] = info.get("phase") == "downloading"
+            self.bus.publish("model_progress", info)
+
+        def trabalhar() -> None:
+            try:
+                caminho = download_model(nome, self.cfg, progresso)
+            except Exception as exc:
+                log.error("falha ao baixar o modelo %s: %s", nome, exc)
+                with self.modelo_lock:
+                    self.modelo.update({"active": False, "error": str(exc)})
+                self.bus.publish("model_error", {"model": nome, "error": str(exc)})
+                return
+            with self.modelo_lock:
+                self.modelo.update({"active": False, "percent": 100.0, "error": "", "path": caminho})
+            self.bus.publish("model_downloaded", {"model": nome, "path": caminho})
+
+        self.bus.publish("model_start", {"model": nome, "expected_mb": esperado})
+        threading.Thread(target=trabalhar, name="download-modelo", daemon=True).start()
+        return self._json({"ok": True, "model": nome, "expected_mb": esperado}, 202)
+
     def _api_clear(self) -> None:
         n = self.store.clear_finished()
         return self._json({"removed": n})
@@ -478,11 +533,41 @@ class TranscritorServer(ThreadingHTTPServer):
         self.cfg = cfg
         self.bus = EventBus()
         self.store = JobStore(cfg)
+        # Estado do download do modelo (um por vez). É alimentado tanto pelo
+        # pedido vindo da interface quanto pelo aquecimento do runner, para os
+        # dois caminhos não dispararem downloads concorrentes do mesmo modelo.
+        self.modelo_lock = threading.Lock()
+        self.model_download: dict[str, Any] = {
+            "active": False, "model": "", "percent": 0.0, "downloaded_mb": 0.0,
+            "expected_mb": 0.0, "error": "", "path": "",
+        }
         self.runner = Runner(cfg, self.store)
-        self.runner.on_event = lambda e, d: self.bus.publish(e, d)
+        self.runner.on_event = self._evento
         self.watcher = Watcher(cfg, self.store, self.runner,
-                               on_event=lambda e, d: self.bus.publish(e, d)) if watch else None
+                               on_event=self._evento) if watch else None
         self.started_at = time.time()
+
+    def _evento(self, evento: str, dados: dict[str, Any]) -> None:
+        """Publica o evento e mantém o estado do modelo em dia."""
+        if evento.startswith("model_"):
+            with self.modelo_lock:
+                if evento == "model_start":
+                    self.model_download.update({
+                        "active": True, "model": str(dados.get("model", "")), "percent": 0.0,
+                        "downloaded_mb": 0.0, "error": "", "path": "",
+                        "expected_mb": float(dados.get("expected_mb") or 0)})
+                elif evento == "model_progress":
+                    self.model_download.update(
+                        {k: v for k, v in dados.items() if k in self.model_download})
+                    # A fase "downloaded" já é o fim: manter "active" ligado ali
+                    # deixaria a faixa da interface eternamente em andamento.
+                    self.model_download["active"] = dados.get("phase") == "downloading"
+                elif evento == "model_downloaded":
+                    self.model_download.update({"active": False, "percent": 100.0, "error": ""})
+                elif evento == "model_error":
+                    self.model_download.update({"active": False,
+                                                "error": str(dados.get("error", ""))})
+        self.bus.publish(evento, dados)
 
     def handle_error(self, request, client_address) -> None:
         """O cliente desconectar no meio do download não é um erro do servidor."""
@@ -505,6 +590,8 @@ def serve(cfg: Config, *, host: str | None = None, port: int | None = None,
     Handler.runner = server.runner
     Handler.watcher = server.watcher
     Handler.bus = server.bus
+    Handler.modelo = server.model_download
+    Handler.modelo_lock = server.modelo_lock
 
     server.runner.start()
     n = server.runner.submit_pending()
