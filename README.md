@@ -744,6 +744,21 @@ O upload não é multipart: o corpo é o próprio arquivo. Caminhos enviados em 
 
 ## Solução de problemas
 
+### A instalação falha com erro de compilação
+
+Versões de Python muito recentes podem ainda não ter pacotes prontos, e o `pip` tenta compilá-los. Instale o compilador e os cabeçalhos do Python e repita o instalador:
+
+```bash
+sudo dnf install gcc python3-devel        # Fedora
+sudo apt install build-essential python3-dev   # Debian / Ubuntu
+```
+
+Em último caso, aponte o `pipx` para um Python anterior:
+
+```bash
+pipx install --python python3.12 git+https://github.com/a32fred/transcritor
+```
+
 ### FFmpeg ou ffprobe não encontrado
 
 Instale ambos e execute `transcrever doctor`. A ausência de ffprobe pode aparecer como falta de trilha de áudio, pois a inspeção não consegue reconhecê-la. `--no-preprocess` não contorna essa verificação.

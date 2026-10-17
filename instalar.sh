@@ -229,6 +229,31 @@ fi
 titulo "2/5  instalando o transcritor"
 
 ESPEC="git+${REPO#git+}@${VERSAO}"
+
+# Instala com pipx; se falhar, mostra a causa e o que fazer. Os dois tropeços
+# reais são falta de internet e Python novo demais (sem pacotes já compilados,
+# o pip tenta compilar e precisa de gcc e dos cabeçalhos do Python).
+instalar_pipx() {
+  local spec="$1" saida
+  if saida="$(pipx install --force "$spec" 2>&1)"; then
+    printf '%s\n' "$saida" | grep -E 'installed package|  - transcr' || true
+    return 0
+  fi
+  printf '%s\n' "$saida" | tail -n 15
+  echo
+  erro "não consegui instalar o transcritor."
+  nota "causas comuns e o que fazer:"
+  nota "  · sem internet — verifique a conexão e rode este script de novo;"
+  nota "  · Python muito novo, sem pacotes prontos — instale o compilador:"
+  case "$DISTRO" in
+    fedora|rhel|centos|rocky|almalinux) nota "      sudo dnf install gcc python3-devel" ;;
+    debian|ubuntu|pop|linuxmint|zorin)  nota "      sudo apt install build-essential python3-dev" ;;
+    arch|manjaro|endeavouros)           nota "      sudo pacman -S base-devel" ;;
+    *)                                  nota "      instale um compilador C e os cabeçalhos do Python" ;;
+  esac
+  return 1
+}
+
 if [ "$DRY" != "1" ] && pipx list --short 2>/dev/null | grep -q '^transcritor '; then
   if [ "$VERSAO" = "main" ] && pipx upgrade transcritor >/dev/null 2>&1; then
     passo "já estava instalado e foi atualizado"
@@ -239,9 +264,12 @@ if [ "$DRY" != "1" ] && pipx list --short 2>/dev/null | grep -q '^transcritor ';
 elif [ "$VERSAO" = "main" ] && { [ "$DRY" = "1" ] || pipx install transcritor >/dev/null 2>&1; }; then
   run pipx install transcritor
   passo "instalado do PyPI"
-else
+elif [ "$DRY" = "1" ]; then
   nota "(se ainda não estiver no PyPI, a instalação vem direto do repositório)"
   run pipx install "$ESPEC"
+else
+  nota "(se ainda não estiver no PyPI, a instalação vem direto do repositório)"
+  instalar_pipx "$ESPEC" || exit 1
 fi
 
 run pipx ensurepath >/dev/null 2>&1 || true
