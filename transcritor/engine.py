@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import KNOWN_MODELS, Config
+from .media import decode_pcm
 
 log = logging.getLogger("transcritor.engine")
 
@@ -137,7 +138,8 @@ class Engine:
     def detect_language(self, path: str | Path) -> tuple[str, float]:
         """Detecta idioma com os 30 primeiros segundos (barato)."""
         model = self._load()
-        _, info = model.transcribe(str(path), language=None, beam_size=1, vad_filter=True)
+        _, info = model.transcribe(decode_pcm(path), language=None, beam_size=1,
+                                   vad_filter=True)
         return info.language, float(info.language_probability)
 
     # ------------------------------------------------------------------
@@ -154,6 +156,9 @@ class Engine:
 
         ``total_duration`` deve vir do ffprobe: a duração só é conhecida depois
         do fim do gerador, então passá-la adiante permite progresso percentual.
+
+        O arquivo é decodificado aqui (ffmpeg) e o modelo recebe as amostras:
+        veja ``media.decode_pcm`` para o motivo de não entregar o caminho.
         """
         cfg = self.cfg
         source = str(path)
@@ -163,7 +168,8 @@ class Engine:
         kwargs.update({k: v for k, v in overrides.items() if v is not None})
 
         t0 = time.time()
-        segment_iter, info = model.transcribe(source, **kwargs)
+        amostras = decode_pcm(path)
+        segment_iter, info = model.transcribe(amostras, **kwargs)
 
         total = total_duration or float(getattr(info, "duration", 0.0) or 0.0)
         segments: list[Segment] = []

@@ -95,3 +95,106 @@ def test_model_status_marca_ativo_o_modelo_da_config(cfg):
     por_nome = {m["name"]: m for m in engine_mod.model_status(cfg)}
     assert por_nome["small"]["active"] is True
     assert por_nome["tiny"]["active"] is False
+
+
+# --------------------------------------------------------------------------
+# Engine — o áudio chega ao modelo como amostras, não como caminho
+# --------------------------------------------------------------------------
+
+class ModeloFalso:
+    """Dublê do ``WhisperModel``: anota o que recebeu e devolve segmentos fixos."""
+
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+        self.recebeu = None
+        self.chamadas: list[dict] = []
+
+    def transcribe(self, audio, **kwargs):
+        self.recebeu = audio
+        self.chamadas.append(kwargs)
+
+        class Info:
+            language = "pt"
+            language_probability = 0.99
+            duration = 3.0
+
+        class Seg:
+            id = 0
+            start = 0.0
+            end = 3.0
+            text = " olá"
+            words: tuple = ()
+            avg_logprob = -0.1
+            no_speech_prob = 0.01
+
+        return iter([Seg()]), Info()
+
+
+@pytest.fixture
+def modelo_falso(monkeypatch):
+    """Faz o ``Engine`` carregar o dublê no lugar do modelo de verdade."""
+    import faster_whisper
+
+    modelo = ModeloFalso()
+    monkeypatch.setattr(faster_whisper, "WhisperModel", lambda *a, **kw: modelo)
+    return modelo
+
+
+def test_transcribe_entrega_amostras_e_nao_o_caminho(cfg, audio_file, modelo_falso):
+    """Regressão do PyAV 19: entregar o caminho quebra a transcrição.
+
+    O PyAV 19 removeu o argumento ``metadata_errors`` que o faster-whisper
+    1.2.1 ainda passa ao abrir o arquivo. Como o transcritor decodifica com o
+    ffmpeg e entrega as amostras, o modelo nem chama esse caminho.
+    """
+    import numpy as np
+
+    resultado = engine_mod.Engine(cfg).transcribe(audio_file)
+
+    assert isinstance(modelo_falso.recebeu, np.ndarray), "o modelo recebeu um caminho"
+    assert modelo_falso.recebeu.dtype == np.float32
+    assert len(modelo_falso.recebeu) == pytest.approx(3 * 16000, rel=0.02)
+    assert resultado.text == "olá"
+    assert resultado.duration == pytest.approx(3.0, abs=0.01)
+    assert resultado.elapsed > 0
+
+
+def test_transcribe_repassa_os_ajustes_da_config(cfg, audio_file, modelo_falso):
+    cfg.beam_size = 5
+    engine_mod.Engine(cfg).transcribe(audio_file, initial_prompt="Mas, chefe,")
+
+    enviados = modelo_falso.chamadas[-1]
+    assert enviados["beam_size"] == 5
+    assert enviados["initial_prompt"] == "Mas, chefe,"
+    assert enviados["word_timestamps"] is False
+
+
+def test_detect_language_tambem_usa_amostras(cfg, audio_file, modelo_falso):
+    import numpy as np
+
+    idioma, prob = engine_mod.Engine(cfg).detect_language(audio_file)
+
+    assert (idioma, prob) == ("pt", 0.99)
+    assert isinstance(modelo_falso.recebeu, np.ndarray)
+    assert modelo_falso.chamadas[-1]["vad_filter"] is True
+    assert modelo_falso.chamadas[-1]["language"] is None
+
+
+def test_engine_nao_recarrega_o_modelo_a_cada_arquivo(cfg, audio_file, monkeypatch):
+    """Carregar o modelo custa segundos: em lote, tem que ser uma vez só."""
+    import faster_whisper
+
+    criados: list[ModeloFalso] = []
+
+    def fabrica(*a, **kw):
+        criados.append(ModeloFalso(*a, **kw))
+        return criados[-1]
+
+    monkeypatch.setattr(faster_whisper, "WhisperModel", fabrica)
+    eng = engine_mod.Engine(cfg)
+    eng.transcribe(audio_file)
+    eng.transcribe(audio_file)
+
+    assert len(criados) == 1
+    assert criados[0].kwargs["compute_type"] == cfg.compute_type

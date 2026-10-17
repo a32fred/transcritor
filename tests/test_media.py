@@ -196,3 +196,75 @@ def test_duration_de_arquivo_invalido_e_zero(tmp_path: Path):
     ruins = tmp_path / "ruim.ogg"
     ruins.write_bytes(b"nao e audio")
     assert media.duration(ruins) == 0.0
+
+
+# --------------------------------------------------------------------------
+# decode_pcm — o áudio que vai para o modelo
+# --------------------------------------------------------------------------
+
+def test_decode_pcm_entrega_float32_mono_16k(audio_file: Path):
+    import numpy as np
+
+    amostras = media.decode_pcm(audio_file)
+    assert amostras.dtype == np.float32
+    assert amostras.ndim == 1
+    assert len(amostras) == pytest.approx(3 * 16000, rel=0.02)
+    assert 0.0 < float(abs(amostras).max()) <= 1.0
+
+
+def test_decode_pcm_bate_com_a_conversao_do_faster_whisper(audio_file: Path):
+    """O contrato é o mesmo do faster-whisper: int16 dividido por 32768.
+
+    Se esta conta mudar, a transcrição muda de resultado sem ninguém pedir.
+    """
+    import wave
+
+    import numpy as np
+
+    amostras = media.decode_pcm(audio_file)
+    with wave.open(str(audio_file), "rb") as w:
+        bruto = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
+
+    assert amostras.size == bruto.size
+    assert np.array_equal(amostras, bruto.astype(np.float32) / 32768.0)
+
+
+def test_decode_pcm_reescreve_para_16k(audio_file: Path, tmp_path: Path):
+    """Entrada de 44,1 kHz tem que chegar em 16 kHz (o modelo exige)."""
+    if not _tem_ffmpeg():
+        pytest.skip("ffmpeg não instalado")
+
+    quarenta_e_um = tmp_path / "44k.wav"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(audio_file),
+         "-ar", "44100", "-ac", "2", "-y", str(quarenta_e_um)],
+        check=True, capture_output=True,
+    )
+    assert media.probe(quarenta_e_um).sample_rate == 44100
+
+    amostras = media.decode_pcm(quarenta_e_um)
+    assert len(amostras) == pytest.approx(3 * 16000, rel=0.05)
+
+
+def test_decode_pcm_le_formato_comprimido(audio_file: Path, tmp_path: Path):
+    """O caso real (mensagem de voz, gravador) é mp3/ogg, não wav."""
+    mp3 = tmp_path / "entrada.mp3"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(audio_file),
+         "-b:a", "64k", "-y", str(mp3)],
+        check=True, capture_output=True,
+    )
+    amostras = media.decode_pcm(mp3)
+    assert amostras.dtype.name == "float32"
+    assert len(amostras) == pytest.approx(3 * 16000, rel=0.1)
+
+
+def test_decode_pcm_arquivo_invalido_explica_o_problema(tmp_path: Path):
+    """A mensagem tem que dizer o que houve, não despejar a linha do ffmpeg."""
+    if not _tem_ffmpeg():
+        pytest.skip("ffmpeg não instalado")
+
+    ruim = tmp_path / "ruim.ogg"
+    ruim.write_bytes(b"isto nao e audio")
+    with pytest.raises(RuntimeError, match=r"não foi possível decodificar ruim\.ogg"):
+        media.decode_pcm(ruim)

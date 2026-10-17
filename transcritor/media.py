@@ -8,8 +8,12 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .config import AUDIO_EXTENSIONS
+
+if TYPE_CHECKING:  # numpy só é importado na hora de decodificar
+    import numpy as np
 
 
 @dataclass
@@ -127,6 +131,52 @@ def normalize(src: str | Path, dst: str | Path, *, sample_rate: int = 16000,
     ]
     subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
     return dst
+
+
+def decode_pcm(src: str | Path, *, sample_rate: int = 16000,
+               timeout: int = 3600) -> np.ndarray:
+    """Decodifica o áudio para amostras float32, mono, em ``sample_rate``.
+
+    É o que o Whisper espera na entrada (ou seja, o mesmo formato que o
+    ``decode_audio`` do faster-whisper produziria): inteiro de 16 bits
+    dividido por 32768. A diferença é quem decodifica — aqui é o ffmpeg, que
+    o transcritor já exige de qualquer forma, em vez do PyAV.
+
+    Isso tem duas consequências boas: o ffmpeg lê muito mais formatos do que
+    uma biblioteca só, e a transcrição deixa de depender da API do PyAV, que
+    muda entre versões. A versão 19 removeu o argumento ``metadata_errors``
+    que o faster-whisper (1.2.1) ainda passa, e qualquer pessoa que instalasse
+    hoje, no Python 3.12 ou mais novo, quebrava na primeira transcrição.
+    Passando as amostras prontas, o faster-whisper nem entra nesse caminho.
+    """
+    ffmpeg = ffmpeg_path()
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg não encontrado no PATH")
+
+    cmd = [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+        "-i", str(src),
+        "-vn",
+        "-ac", "1",
+        "-ar", str(sample_rate),
+        "-c:a", "pcm_s16le",
+        "-f", "s16le",
+        "-",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
+    if proc.returncode != 0:
+        linhas = (proc.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        motivo = linhas[-1].strip() if linhas else "erro desconhecido"
+        raise RuntimeError(
+            f"não foi possível decodificar {Path(src).name} com o ffmpeg: {motivo}"
+        )
+
+    import numpy as np
+
+    amostras = np.frombuffer(proc.stdout, dtype="<i2")
+    if amostras.size == 0:
+        raise RuntimeError(f"nenhuma amostra de áudio em {Path(src).name}")
+    return amostras.astype(np.float32) / 32768.0
 
 
 def duration(path: str | Path) -> float:
