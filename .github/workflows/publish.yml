@@ -18,6 +18,8 @@ name: Publicar no PyPI
 on:
   release:
     types: [published]
+  # Permite refazer o build/anexação de um lançamento sem criar outra versão.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -146,7 +148,7 @@ jobs:
       - name: Anexar ao lançamento publicado
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/*.rpm dist/*.deb
+        run: gh release upload "$GITHUB_REF_NAME" dist/*.rpm dist/*.deb --repo a32fred/transcritor --clobber
 
   publicar:
     name: Enviar para o PyPI

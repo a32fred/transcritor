@@ -131,6 +131,8 @@ Passo a passo:
 O mesmo lançamento anexa os pacotes RPM e `.deb`, construídos a partir do mesmo sdist. Para
 entender o ambiente isolado que eles carregam, construí-los localmente ou configurar o COPR, veja
 [docs/pacotes-linux.md](docs/pacotes-linux.md).
+Se a anexação falhar, é seguro refazer o workflow `publish.yml` manualmente, escolhendo a etiqueta
+do lançamento como referência; o envio ao PyPI detecta uma versão já publicada e não a substitui.
 
 Duas coisas são irreversíveis: **um número de versão não pode ser reaproveitado** no PyPI, e um
 arquivo publicado não pode ser substituído (no máximo retirado do ar). Se algo sair errado depois do
