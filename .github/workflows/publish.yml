@@ -77,12 +77,12 @@ jobs:
       - name: Construir e instalar
         run: |
           ./packaging/rpm/build.sh --sdist "dist/transcritor-$(sed -n 's/^Version:[[:space:]]*//p' packaging/rpm/transcritor.spec | head -1).tar.gz"
+          rpm -qpl dist/transcritor-*.rpm | grep -q '^/usr/share/man/man1/transcrever.1.gz$'
           dnf install -y --setopt=install_weak_deps=False dist/transcritor-*.rpm
           transcrever --version
           /usr/lib64/transcritor/venv/bin/python -B -c "import av, ctranslate2, numpy, onnxruntime, tokenizers; print('dependências nativas carregadas')"
           test -f /usr/share/applications/transcritor.desktop
           test -f /usr/share/applications/transcritor-arquivo.desktop
-          test -f /usr/share/man/man1/transcrever.1.gz
       - name: Guardar RPM para o lançamento
         uses: actions/upload-artifact@v4
         with:
