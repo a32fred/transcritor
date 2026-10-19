@@ -18,8 +18,15 @@ name: Publicar no PyPI
 on:
   release:
     types: [published]
-  # Permite refazer o build/anexação de um lançamento sem criar outra versão.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Etiqueta do lançamento existente (por exemplo, v1.1.1)
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag || github.ref_name }}
 
 permissions:
   contents: read
@@ -32,6 +39,8 @@ jobs:
     steps:
       - name: Obter o código
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Preparar o Python
         uses: actions/setup-python@v5
         with:
@@ -42,7 +51,7 @@ jobs:
           python -m build
       - name: Conferir que a etiqueta e o pacote têm a mesma versão
         run: |
-          versao_tag="${GITHUB_REF_NAME#v}"
+          versao_tag="${RELEASE_TAG#v}"
           versao_pacote=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
           test "$versao_tag" = "$versao_pacote"
       - name: Conferir os metadados como o PyPI confere
@@ -69,6 +78,8 @@ jobs:
     steps:
       - name: Obter o código da etiqueta
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Instalar ferramentas RPM
         run: dnf install -y rpm-build redhat-rpm-config python3-devel python3-pip
       - name: Baixar o sdist conferido
@@ -99,6 +110,8 @@ jobs:
     steps:
       - name: Obter o código da etiqueta
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Preparar o Python
         uses: actions/setup-python@v5
         with:
@@ -148,7 +161,7 @@ jobs:
       - name: Anexar ao lançamento publicado
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/*.rpm dist/*.deb --repo a32fred/transcritor --clobber
+        run: gh release upload "$RELEASE_TAG" dist/*.rpm dist/*.deb --repo a32fred/transcritor --clobber
 
   publicar:
     name: Enviar para o PyPI
@@ -170,7 +183,7 @@ jobs:
       - name: Não tentar substituir uma versão já publicada
         id: versao
         run: |
-          versao="${GITHUB_REF_NAME#v}"
+          versao="${RELEASE_TAG#v}"
           if curl --fail --silent --show-error --location \
             "https://pypi.org/pypi/transcritor/${versao}/json" -o /dev/null; then
             echo "ja_publicada=true" >> "$GITHUB_OUTPUT"
