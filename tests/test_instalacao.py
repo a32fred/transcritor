@@ -287,6 +287,40 @@ def test_desktop_status_diz_o_que_falta(cli, tmp_path, monkeypatch):
     assert "sim" in r.output
 
 
+def test_desktop_instalar_para_um_pacote(cli, tmp_path, monkeypatch):
+    """O caminho dos pacotes (.rpm/.deb): escreve em outro "share" e com Exec fixo.
+
+    É o que o construtor dos pacotes usa, para a lista de tipos de arquivo e o
+    comando do ícone saírem do próprio transcritor, e não de uma cópia que
+    envelhece dentro do empacotamento.
+    """
+    do_usuario = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_DATA_HOME", str(do_usuario))
+    destino = tmp_path / "buildroot" / "usr" / "share"
+
+    r = roda(cli, "desktop", "instalar", "--destino", str(destino),
+             "--exec", "/usr/bin/transcrever")
+    assert r.exit_code == 0
+
+    menu = destino / "applications" / "transcritor.desktop"
+    abrir_com = destino / "applications" / "transcritor-arquivo.desktop"
+    icone = destino / "icons" / "hicolor" / "scalable" / "apps" / "transcritor.svg"
+    assert menu.exists() and abrir_com.exists() and icone.exists()
+    assert not do_usuario.exists(), "com --destino nada é escrito na área do usuário"
+
+    texto = menu.read_text(encoding="utf-8")
+    assert "Exec=/usr/bin/transcrever serve --open" in texto
+    assert "__EXEC__" not in texto
+
+    texto = abrir_com.read_text(encoding="utf-8")
+    assert "Exec=/usr/bin/transcrever abrir %F" in texto
+    assert "audio/mpeg" in texto and "audio/ogg" in texto
+    assert "__MIMES__" not in texto
+
+    r = roda(cli, "desktop", "status", "--destino", str(destino))
+    assert r.exit_code == 0 and "sim" in r.output
+
+
 def test_mimetypes_cobrem_todos_os_formatos_de_entrada():
     tipos = cli_mod._mimetypes_suportados()
     for esperado in ("audio/mpeg", "audio/ogg", "audio/wav", "audio/flac",

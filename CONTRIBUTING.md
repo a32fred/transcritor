@@ -128,6 +128,10 @@ Passo a passo:
 4. O lançamento publicado dispara o `publish.yml`, que constrói, confere e envia ao PyPI. Acompanhe
    em <https://github.com/a32fred/transcritor/actions>.
 
+O mesmo lançamento anexa os pacotes RPM e `.deb`, construídos a partir do mesmo sdist. Para
+entender o ambiente isolado que eles carregam, construí-los localmente ou configurar o COPR, veja
+[docs/pacotes-linux.md](docs/pacotes-linux.md).
+
 Duas coisas são irreversíveis: **um número de versão não pode ser reaproveitado** no PyPI, e um
 arquivo publicado não pode ser substituído (no máximo retirado do ar). Se algo sair errado depois do
 envio, corrija e publique a versão seguinte.
@@ -136,4 +140,3 @@ Para ensaiar antes, sem gastar um número: use o [TestPyPI](https://test.pypi.or
 `python -m build` e `uv publish --publish-url https://test.pypi.org/legacy/`, e instale de lá com
 `pipx install --index-url https://test.pypi.org/simple/ transcritor`. O nome precisa existir também
 no TestPyPI, com o mesmo Trusted Publisher apontando para lá.
-

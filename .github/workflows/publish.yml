@@ -38,6 +38,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip build twine
           python -m build
+      - name: Conferir que a etiqueta e o pacote têm a mesma versão
+        run: |
+          versao_tag="${GITHUB_REF_NAME#v}"
+          versao_pacote=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          test "$versao_tag" = "$versao_pacote"
       - name: Conferir os metadados como o PyPI confere
         run: python -m twine check --strict dist/*
       # Só publica o que instala: as dependências vêm do PyPI de verdade, então
@@ -52,6 +57,96 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  pacote-rpm:
+    name: Construir e instalar o RPM Fedora 44
+    needs: construir
+    runs-on: ubuntu-latest
+    container: fedora:44
+    timeout-minutes: 35
+    steps:
+      - name: Obter o código da etiqueta
+        uses: actions/checkout@v4
+      - name: Instalar ferramentas RPM
+        run: dnf install -y rpm-build redhat-rpm-config python3-devel python3-pip
+      - name: Baixar o sdist conferido
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Construir e instalar
+        run: |
+          ./packaging/rpm/build.sh --sdist "dist/transcritor-$(sed -n 's/^Version:[[:space:]]*//p' packaging/rpm/transcritor.spec | head -1).tar.gz"
+          dnf install -y --setopt=install_weak_deps=False dist/transcritor-*.rpm
+          transcrever --version
+          /usr/lib64/transcritor/venv/bin/python -B -c "import av, ctranslate2, numpy, onnxruntime, tokenizers; print('dependências nativas carregadas')"
+          test -f /usr/share/applications/transcritor.desktop
+          test -f /usr/share/applications/transcritor-arquivo.desktop
+          test -f /usr/share/man/man1/transcrever.1.gz
+      - name: Guardar RPM para o lançamento
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcritor-rpm
+          path: dist/*.rpm
+
+  pacote-deb:
+    name: Construir e instalar o .deb Ubuntu 24.04
+    needs: construir
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Obter o código da etiqueta
+        uses: actions/checkout@v4
+      - name: Preparar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Baixar o sdist conferido
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Construir e instalar
+        run: |
+          chmod +x packaging/deb/build.sh
+          ./packaging/deb/build.sh --sdist "dist/transcritor-$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])').tar.gz"
+          sudo dpkg -i dist/*.deb
+          transcrever --version
+          /usr/lib/transcritor/venv/bin/python -B -c "import av, ctranslate2, numpy, onnxruntime, tokenizers; print('dependências nativas carregadas')"
+          test -f /usr/share/applications/transcritor.desktop
+          test -f /usr/share/applications/transcritor-arquivo.desktop
+          test -f /usr/share/man/man1/transcrever.1.gz
+      - name: Guardar .deb para o lançamento
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcritor-deb
+          path: dist/*.deb
+
+  anexar-linux:
+    name: Anexar pacotes Linux ao lançamento
+    needs: [pacote-rpm, pacote-deb]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Baixar o RPM
+        uses: actions/download-artifact@v4
+        with:
+          name: transcritor-rpm
+          path: dist/
+      - name: Baixar o .deb
+        uses: actions/download-artifact@v4
+        with:
+          name: transcritor-deb
+          path: dist/
+      - name: Anexar ao lançamento publicado
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/*.rpm dist/*.deb
 
   publicar:
     name: Enviar para o PyPI
@@ -70,7 +165,18 @@ jobs:
         with:
           name: dist
           path: dist/
+      - name: Não tentar substituir uma versão já publicada
+        id: versao
+        run: |
+          versao="${GITHUB_REF_NAME#v}"
+          if curl --fail --silent --show-error --location \
+            "https://pypi.org/pypi/transcritor/${versao}/json" -o /dev/null; then
+            echo "ja_publicada=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ja_publicada=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publicar
+        if: steps.versao.outputs.ja_publicada == 'false'
         # Ação oficial do projeto PyPA. Publicar por etiqueta de versão, nunca
         # por ramo: o pacote do PyPI não pode ser reescrito depois.
         uses: pypa/gh-action-pypi-publish@release/v1

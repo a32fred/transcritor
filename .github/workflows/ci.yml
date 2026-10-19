@@ -96,3 +96,78 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  pacote-rpm:
+    name: RPM Fedora 44 (instalação real)
+    needs: empacotamento
+    runs-on: ubuntu-latest
+    container: fedora:44
+    timeout-minutes: 35
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v4
+      - name: Instalar ferramentas RPM
+        run: dnf install -y rpm-build redhat-rpm-config python3-devel python3-pip
+      - name: Baixar o sdist já conferido
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Construir o RPM
+        run: ./packaging/rpm/build.sh --sdist "dist/transcritor-$(sed -n 's/^Version:[[:space:]]*//p' packaging/rpm/transcritor.spec | head -1).tar.gz"
+      - name: Instalar pelo DNF e conferir o comando e a área de trabalho
+        run: |
+          dnf install -y --setopt=install_weak_deps=False dist/transcritor-*.rpm
+          transcrever --version
+          /usr/lib64/transcritor/venv/bin/python -B -c "import av, ctranslate2, numpy, onnxruntime, tokenizers; print('dependências nativas carregadas')"
+          test -f /usr/share/applications/transcritor.desktop
+          test -f /usr/share/applications/transcritor-arquivo.desktop
+          test -f /usr/share/icons/hicolor/scalable/apps/transcritor.svg
+          test -f /usr/share/man/man1/transcrever.1.gz
+          ! rpm -qp --requires dist/transcritor-*.rpm | grep -E 'lib(av|swscale|avcodec|ctranslate2)'
+      - name: Guardar o RPM conferido
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcritor-rpm
+          path: dist/*.rpm
+
+  pacote-deb:
+    name: DEB Ubuntu 24.04 (instalação real)
+    needs: empacotamento
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v4
+      - name: Preparar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Baixar o sdist já conferido
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Construir o .deb
+        run: |
+          chmod +x packaging/deb/build.sh
+          ./packaging/deb/build.sh --sdist "dist/transcritor-$(python -c 'from transcritor import __version__; print(__version__)').tar.gz"
+      - name: Instalar pelo dpkg e conferir o comando e a área de trabalho
+        run: |
+          sudo dpkg -i dist/*.deb
+          transcrever --version
+          /usr/lib/transcritor/venv/bin/python -B -c "import av, ctranslate2, numpy, onnxruntime, tokenizers; print('dependências nativas carregadas')"
+          dpkg-deb --info dist/*.deb
+          test -f /usr/share/applications/transcritor.desktop
+          test -f /usr/share/applications/transcritor-arquivo.desktop
+          test -f /usr/share/icons/hicolor/scalable/apps/transcritor.svg
+          test -f /usr/share/man/man1/transcrever.1.gz
+      - name: Guardar o .deb conferido
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcritor-deb
+          path: dist/*.deb

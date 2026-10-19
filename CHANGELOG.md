@@ -28,6 +28,9 @@ Primeira publicação no PyPI.
 - Verificação de empacotamento na integração contínua: a cada envio, a wheel e o pacote de
   código-fonte são construídos, conferidos e instalados em ambientes limpos; a suíte roda contra a
   wheel instalada, fora do repositório, para provar que o que foi publicado funciona.
+- Pacotes RPM (Fedora 44) e `.deb` (Ubuntu 24.04) construídos e testados em ambientes limpos:
+  instalação pelo gerenciador do sistema, comando, menu, associação de arquivos e transcrição real.
+  Os artefatos ficam anexados ao lançamento no GitHub.
 - Testes que exercitam o motor de verdade (com um modelo dublê) e a decodificação do áudio — era
   exatamente o caminho sem cobertura que deixou o problema do PyAV passar.
 - Testes que conferem o empacotamento sem construir nada: versão do `pyproject.toml` igual à do

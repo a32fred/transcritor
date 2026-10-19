@@ -751,12 +751,68 @@ def _xdg_data() -> Path:
     return Path(raiz).expanduser() if raiz else Path.home() / ".local" / "share"
 
 
-def _apps_dir() -> Path:
-    return _xdg_data() / "applications"
+def _apps_dir(base: Path | None = None) -> Path:
+    """Onde ficam os .desktop.
+
+    ``base`` é a raiz de dados (o ``share``): o padrão é a do usuário, e os
+    pacotes de distribuição passam ``/usr/share`` escrevendo dentro do
+    diretório de construção.
+    """
+    return (base or _xdg_data()) / "applications"
 
 
-def _icone_dir() -> Path:
-    return _xdg_data() / "icons" / "hicolor" / "scalable" / "apps"
+def _icone_dir(base: Path | None = None) -> Path:
+    return (base or _xdg_data()) / "icons" / "hicolor" / "scalable" / "apps"
+
+
+def instalar_desktop(base: Path | None = None, exec_cmd: str | None = None,
+                     *, atualizar_caches: bool = True) -> list[Path]:
+    """Escreve o ícone do menu e o "Abrir com" em ``base``.
+
+    Uma só implementação serve para a instalação por usuário (``~/.local/share``)
+    e para os pacotes (.rpm/.deb escrevem em ``/usr/share`` dentro do
+    diretório de construção), então a lista de tipos de arquivo e o comando do
+    ``Exec`` nunca saem de sincronia entre os dois caminhos.
+    """
+    if sys.platform != "linux":
+        raise click.ClickException("a integração com a área de trabalho existe só no Linux")
+
+    if not exec_cmd:
+        # O .desktop precisa de um Exec absoluto. Instalado, é o comando do
+        # PATH; rodando do código-fonte, vale a pena invocar o módulo direto.
+        launcher = shutil.which("transcrever") or shutil.which("transcritor")
+        exec_cmd = launcher if launcher else f"{sys.executable} -m transcritor"
+    if " " in exec_cmd and not exec_cmd.startswith('"'):
+        exec_cmd = f'"{exec_cmd}"'
+
+    _apps_dir(base).mkdir(parents=True, exist_ok=True)
+    _icone_dir(base).mkdir(parents=True, exist_ok=True)
+    mimes = ";".join(_mimetypes_suportados()) + ";"
+
+    modelos = ("transcritor.desktop", "transcritor-arquivo.desktop")
+    faltando = [m for m in modelos if not (DATA_DIR / m).exists()]
+    if faltando:
+        raise click.ClickException(
+            "arquivos de integração ausentes na instalação: " + ", ".join(faltando))
+
+    criados: list[Path] = []
+    for nome in modelos:
+        texto = (DATA_DIR / nome).read_text(encoding="utf-8")
+        texto = texto.replace("__EXEC__", exec_cmd).replace("__MIMES__", mimes)
+        destino = _apps_dir(base) / nome
+        destino.write_text(texto, encoding="utf-8")
+        destino.chmod(0o644)
+        criados.append(destino)
+
+    icone_origem = DATA_DIR / "transcritor.svg"
+    if icone_origem.exists():
+        destino = _icone_dir(base) / "transcritor.svg"
+        shutil.copy2(icone_origem, destino)
+        criados.append(destino)
+
+    if atualizar_caches:
+        _atualizar_caches_desktop(base)
+    return criados
 
 
 # Tipos que o "Abrir com" deve reconhecer. A maioria vem do próprio Python;
@@ -782,18 +838,18 @@ def _mimetypes_suportados() -> list[str]:
     return sorted(tipos)
 
 
-def _atualizar_caches_desktop() -> None:
-    for cmd in (["update-desktop-database", str(_apps_dir())],
-                ["gtk-update-icon-cache", "-q", "-t", str(_icone_dir().parents[1])]):
+def _atualizar_caches_desktop(base: Path | None = None) -> None:
+    for cmd in (["update-desktop-database", str(_apps_dir(base))],
+                ["gtk-update-icon-cache", "-q", "-t", str(_icone_dir(base).parents[1])]):
         if shutil.which(cmd[0]):
             with contextlib.suppress(Exception):
                 subprocess.run(cmd, check=False, capture_output=True)
 
 
-def _arquivos_desktop() -> tuple[Path, Path, Path]:
-    return (_apps_dir() / "transcritor.desktop",
-            _apps_dir() / "transcritor-arquivo.desktop",
-            _icone_dir() / "transcritor.svg")
+def _arquivos_desktop(base: Path | None = None) -> tuple[Path, Path, Path]:
+    return (_apps_dir(base) / "transcritor.desktop",
+            _apps_dir(base) / "transcritor-arquivo.desktop",
+            _icone_dir(base) / "transcritor.svg")
 
 
 @cli.group("desktop", short_help='Instala o ícone no menu e o "Abrir com".')
@@ -802,63 +858,42 @@ def grp_desktop() -> None:
 
 
 @grp_desktop.command("instalar")
-def cmd_desktop_instalar() -> None:
+@click.option("--destino", type=click.Path(path_type=Path), default=None,
+              help="Raiz de dados (o 'share') onde escrever; padrão: ~/.local/share.")
+@click.option("--exec", "exec_cmd", default=None,
+              help="Comando que o ícone chama; padrão: o transcrever instalado.")
+def cmd_desktop_instalar(destino: Path | None, exec_cmd: str | None) -> None:
     """Cria o ícone no menu e a opção "Abrir com o transcritor" (sem root)."""
-    if sys.platform != "linux":
-        raise click.ClickException("a integração com a área de trabalho existe só no Linux")
+    # Com --destino, quem cuida dos caches é o gerenciador de pacotes: dentro de
+    # um diretório de construção não existe cache para atualizar.
+    for caminho in instalar_desktop(destino, exec_cmd, atualizar_caches=destino is None):
+        click.echo(f"  criado: {caminho}")
 
-    # O .desktop precisa de um Exec absoluto. Instalado, é o comando do PATH;
-    # rodando do código-fonte, vale a pena invocar o módulo direto.
-    launcher = shutil.which("transcrever") or shutil.which("transcritor")
-    exec_cmd = launcher if launcher else f"{sys.executable} -m transcritor"
-    if " " in exec_cmd:
-        exec_cmd = f'"{exec_cmd}"'
-
-    _apps_dir().mkdir(parents=True, exist_ok=True)
-    _icone_dir().mkdir(parents=True, exist_ok=True)
-    mimes = ";".join(_mimetypes_suportados()) + ";"
-
-    modelos = {"transcritor.desktop": "transcritor.desktop",
-               "transcritor-arquivo.desktop": "transcritor-arquivo.desktop"}
-    faltando = [m for m in modelos if not (DATA_DIR / m).exists()]
-    if faltando:
-        raise click.ClickException(
-            "arquivos de integração ausentes na instalação: " + ", ".join(faltando))
-
-    for nome in modelos:
-        texto = (DATA_DIR / nome).read_text(encoding="utf-8")
-        texto = texto.replace("__EXEC__", exec_cmd).replace("__MIMES__", mimes)
-        destino = _apps_dir() / nome
-        destino.write_text(texto, encoding="utf-8")
-        destino.chmod(0o644)
-        click.echo(f"  criado: {destino}")
-
-    icone_origem = DATA_DIR / "transcritor.svg"
-    if icone_origem.exists():
-        destino = _icone_dir() / "transcritor.svg"
-        shutil.copy2(icone_origem, destino)
-        click.echo(f"  criado: {destino}")
-
-    _atualizar_caches_desktop()
-    click.echo("")
-    click.echo('  procure "transcritor" no menu, ou clique com o botão direito em um')
-    click.echo('  áudio e escolha "Abrir com → Transcrever com o transcritor".')
+    if destino is None:
+        click.echo("")
+        click.echo('  procure "transcritor" no menu, ou clique com o botão direito em um')
+        click.echo('  áudio e escolha "Abrir com → Transcrever com o transcritor".')
 
 
 @grp_desktop.command("remover")
-def cmd_desktop_remover() -> None:
+@click.option("--destino", type=click.Path(path_type=Path), default=None,
+              help="Raiz de dados (o 'share') de onde remover; padrão: ~/.local/share.")
+def cmd_desktop_remover(destino: Path | None) -> None:
     """Remove o ícone do menu e o "Abrir com"."""
-    for p in _arquivos_desktop():
+    for p in _arquivos_desktop(destino):
         if p.exists():
             p.unlink()
             click.echo(f"  removido: {p}")
-    _atualizar_caches_desktop()
+    if destino is None:
+        _atualizar_caches_desktop()
 
 
 @grp_desktop.command("status")
-def cmd_desktop_status() -> None:
+@click.option("--destino", type=click.Path(path_type=Path), default=None,
+              help="Raiz de dados (o 'share') a conferir; padrão: ~/.local/share.")
+def cmd_desktop_status(destino: Path | None) -> None:
     """Mostra o que está instalado na área de trabalho."""
-    for p in _arquivos_desktop():
+    for p in _arquivos_desktop(destino):
         marca = click.style("sim", fg="green") if p.exists() else click.style("não", fg="yellow")
         click.echo(f"  {marca:<12} {p}")
 

@@ -53,6 +53,16 @@ def test_versao_do_pyproject_bate_com_o_pacote():
     assert _pyproject()["project"]["version"] == __version__
 
 
+def test_versao_do_spec_do_rpm_bate_com_o_pacote():
+    """Uma versão diferente no RPM faz publicar um pacote com código errado."""
+    from transcritor import __version__
+
+    spec = (RAIZ / "packaging/rpm/transcritor.spec").read_text(encoding="utf-8")
+    versao = re.search(r"^Version:\s*(\S+)", spec, re.MULTILINE)
+    assert versao is not None
+    assert versao.group(1) == __version__
+
+
 def test_requirements_espelha_as_dependencias_do_pyproject():
     """Duas listas de dependências: sair de sincronia quebra o CI, não o código."""
     linhas = [

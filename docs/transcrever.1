@@ -1,0 +1,83 @@
+.TH TRANSCRERVER 1 "" "transcritor" "Comandos do usuário"
+.SH NOME
+transcrever \- transcrição local de áudio e vídeo
+.SH SINOPSE
+.B transcrever
+[
+.I opções
+] [
+.I comando
+] [
+.I argumentos
+...]
+.SH DESCRIÇÃO
+Transcreve áudio e vídeo localmente, sem enviar gravações para serviços externos.
+O modelo Whisper é baixado uma vez e depois funciona sem rede.
+.PP
+Executado sem argumentos em um terminal interativo, abre um menu guiado. Para
+abrir a interface gráfica local, use
+.BR transcrever\ abrir .
+.SH COMANDOS
+.TP
+.B transcribe ARQUIVO...
+Transcreve um ou mais arquivos de áudio ou vídeo.
+.TP
+.B abrir [ARQUIVO...]
+Abre a interface local no navegador; arquivos informados entram na fila.
+.TP
+.B serve
+Inicia a interface web local.
+.TP
+.B watch
+Vigia a pasta de entrada e processa arquivos automaticamente.
+.TP
+.B tui
+Abre o painel interativo no terminal.
+.TP
+.B models
+Lista e baixa modelos Whisper.
+.TP
+.B detect ARQUIVO
+Detecta o idioma de um arquivo.
+.TP
+.B info
+Mostra os caminhos de dados e o modelo ativo.
+.TP
+.B doctor
+Verifica dependências e configuração.
+.SH OPÇÕES
+.TP
+.BI --config\ FILE
+Usa um arquivo JSON de configuração alternativo.
+.TP
+.B -v, --verbose
+Mostra logs detalhados.
+.TP
+.B -q, --quiet
+Mostra apenas erros.
+.TP
+.B --version
+Mostra a versão e encerra.
+.TP
+.B -h, --help
+Mostra a ajuda.
+.SH EXEMPLOS
+.nf
+transcrever
+transcrever transcribe reuniao.mp3
+transcrever abrir
+transcrever info
+.fi
+.SH ARQUIVOS
+.TP
+.I ~/.local/share/transcritor/
+Modelos, configuração, fila de entrada e resultados. Respeita
+.BR XDG_DATA_HOME .
+.SH PRIVACIDADE
+O áudio é processado localmente. A única conexão de rede necessária é para baixar
+o programa e, na primeira utilização, o modelo selecionado.
+.SH VEJA TAMBÉM
+.BR ffmpeg (1),
+.BR ffprobe (1)
+.PP
+Documentação: https://github.com/a32fred/transcritor

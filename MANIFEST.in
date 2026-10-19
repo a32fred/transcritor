@@ -21,7 +21,7 @@ include requirements.txt
 include pyproject.toml
 include bin/transcrever
 
-recursive-include docs *.service *.svg *.png
+recursive-include docs *.1 *.md *.service *.svg *.png
 recursive-include tests *.py
 
 # Dados locais de quem usa o programa não entram no pacote.

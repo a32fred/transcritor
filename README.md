@@ -145,6 +145,9 @@ Com [`uv`](https://docs.astral.sh/uv/):
 uv tool install transcritor
 ```
 
+Para construir/conferir os pacotes RPM e `.deb` ou acompanhar as instruções para
+empacotadores, veja [Pacotes Linux](https://github.com/a32fred/transcritor/blob/main/docs/pacotes-linux.md).
+
 Do repositório, quando você quer acompanhar o desenvolvimento:
 
 ```bash
